@@ -1,0 +1,102 @@
+
+export enum ItemCategory {
+  ELECTRONICS = 'Electronics',
+  STATIONERY = 'Stationery',
+  CLOTHING = 'Clothing',
+  ACCESSORIES = 'Accessories',
+  ID_CARDS = 'ID Cards',
+  BOOKS = 'Books',
+  OTHER = 'Other'
+}
+
+export enum ReportType {
+  LOST = 'LOST',
+  FOUND = 'FOUND'
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  studentId?: string;
+  avatar?: string;
+  department?: string;
+  isVerified: boolean;
+}
+
+export interface GeminiAnalysisResult {
+  category: ItemCategory;
+  title: string;
+  summary: string;
+  tags: string[];
+  description: string;
+  distinguishingFeatures: string[];
+  isPrank: boolean;
+  prankReason?: string;
+  isEmergency?: boolean; // For "Lost Person" reports
+  faceStatus: 'NONE' | 'ACCIDENTAL' | 'PRANK'; 
+  // New Safety Fields
+  isViolating: boolean;
+  violationType?: 'GORE' | 'ANIMAL' | 'HUMAN' | 'IRRELEVANT' | 'INCONSISTENT' | 'NONE';
+  violationReason?: string;
+}
+
+export interface ItemReport {
+  id: string;
+  type: ReportType;
+  title: string;
+  summary?: string; // AI generated short summary
+  description: string;
+  distinguishingFeatures?: string[];
+  category: ItemCategory;
+  location: string;
+  date: string;
+  time: string; 
+  imageUrls: string[];
+  tags: string[];
+  status: 'OPEN' | 'RESOLVED';
+  reporterId: string;
+  reporterName: string;
+  createdAt: number;
+}
+
+export type ViewState = 'AUTH' | 'DASHBOARD' | 'REPORT_LOST' | 'REPORT_FOUND' | 'MESSAGES' | 'PROFILE' | 'COMPARATOR';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'match' | 'message' | 'system';
+  timestamp: number;
+  isRead: boolean;
+  link?: ViewState;
+  metadata?: {
+    matchId?: string;
+    sourceId?: string;
+  };
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  text: string;
+  timestamp: number;
+  attachment?: {
+    type: 'image' | 'video' | 'file';
+    url: string;
+  };
+}
+
+export interface Chat {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  itemImage?: string;
+  participants: string[];
+  messages: Message[];
+  lastMessage: string;
+  lastMessageTime: number;
+  unreadCount: number;
+  isBlocked?: boolean;
+  blockedBy?: string;
+}
