@@ -242,7 +242,7 @@ const App: React.FC = () => {
     // We look for a chat about this item that includes ME.
     const existingChat = chats.find(c => 
       c.itemId === report.id && 
-      c.type === 'direct' &&
+      c.type === 'direct' && 
       c.participants.includes(user.id)
     );
     
@@ -283,7 +283,7 @@ const App: React.FC = () => {
       const chatRef = doc(db, 'chats', chatId);
       
       // FIX: Sanitize message object to remove 'undefined' values which Firebase arrayUnion rejects
-      // Specifically 'attachment' might be undefined
+      // Specifically 'attachment' or 'senderName' might be undefined
       const msgData = JSON.parse(JSON.stringify(message));
 
       // Update Firestore
