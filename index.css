@@ -1,0 +1,6 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles handled in index.html, this file exists to satisfy build/import requirements */

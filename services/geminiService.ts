@@ -6,7 +6,7 @@ import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 const getAI = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API Key must be set. Please check Vercel Environment Variables.");
+    throw new Error("MISSING_API_KEY");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -49,7 +49,11 @@ const generateWithCascade = async (
   let ai;
   try {
     ai = getAI();
-  } catch (e) {
+  } catch (e: any) {
+    if (e.message === 'MISSING_API_KEY') {
+       // Re-throw specifically so callers can handle it gracefully
+       throw new Error("MISSING_API_KEY");
+    }
     console.error("Gemini Client Init Failed:", e);
     throw e;
   }
@@ -108,8 +112,12 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
-  } catch (e) {
-    console.error("Instant check failed", e);
+  } catch (e: any) {
+    if (e.message === "MISSING_API_KEY") {
+      console.warn("AI Security Scan Skipped: API Key missing.");
+    } else {
+      console.error("Instant check failed", e);
+    }
     // Fail safe: assume safe if AI fails, let manual review catch it
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
@@ -177,8 +185,12 @@ export const analyzeItemDescription = async (
       distinguishingFeatures: result.distinguishingFeatures || [],
       faceStatus: 'NONE'
     };
-  } catch (error) {
-    console.error("AI Analysis Error", error);
+  } catch (error: any) {
+    if (error.message === "MISSING_API_KEY") {
+        console.warn("AI Analysis Skipped: API Key missing.");
+    } else {
+        console.error("AI Analysis Error", error);
+    }
     // Return original data on error so user isn't blocked
     return { 
       isViolating: false,
@@ -204,7 +216,8 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
     });
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
-  } catch (e) {
+  } catch (e: any) {
+    if (e.message !== "MISSING_API_KEY") console.error(e);
     return { userStatus: 'NONE', refinedQuery: query };
   }
 };
@@ -241,8 +254,8 @@ export const findPotentialMatches = async (
     const text = response.text ? cleanJSON(response.text) : "{}";
     const data = JSON.parse(text);
     return data.matches || [];
-  } catch (e) {
-    console.error("Match finding error", e);
+  } catch (e: any) {
+    if (e.message !== "MISSING_API_KEY") console.error("Match finding error", e);
     return [];
   }
 };
@@ -276,8 +289,8 @@ export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promis
 
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
-  } catch (e) {
-    console.error("Comparison Error", e);
+  } catch (e: any) {
+    if (e.message !== "MISSING_API_KEY") console.error("Comparison Error", e);
     return { confidence: 0, explanation: "Comparison failed.", similarities: [], differences: [] };
   }
 };
