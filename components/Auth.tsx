@@ -112,7 +112,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
            {/* Content */}
            <div className="relative z-10 flex flex-col h-full">
-              {/* Logo Area - REVERTED TO PIN LOGO */}
+              {/* Logo Area */}
               <div className="mb-10">
                 <div className="w-20 h-20 mb-6 filter drop-shadow-xl">
                    <svg viewBox="0 0 200 200" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -122,10 +122,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                           <stop offset="1" stopColor="#e0e7ff" />
                         </linearGradient>
                       </defs>
-                      <g opacity="0.5">
-                        <circle cx="100" cy="100" r="85" stroke="url(#pinGradientAuth)" strokeWidth="2" strokeDasharray="10 10" strokeLinecap="round" className="animate-[spin_20s_linear_infinite]" />
-                        <circle cx="100" cy="100" r="70" stroke="url(#pinGradientAuth)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" className="animate-[spin_15s_linear_infinite_reverse]" />
+                      
+                      {/* Signal Ripples replacing rotating circles */}
+                      <g>
+                         <circle cx="100" cy="100" r="35" stroke="url(#pinGradientAuth)" strokeWidth="1.5" fill="none" opacity="0.6" className="animate-signal" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} />
+                         <circle cx="100" cy="100" r="35" stroke="url(#pinGradientAuth)" strokeWidth="1.5" fill="none" opacity="0.6" className="animate-signal" style={{ animationDelay: '1s', transformBox: 'fill-box', transformOrigin: 'center' }} />
+                         <circle cx="100" cy="100" r="35" stroke="url(#pinGradientAuth)" strokeWidth="1.5" fill="none" opacity="0.6" className="animate-signal" style={{ animationDelay: '2s', transformBox: 'fill-box', transformOrigin: 'center' }} />
                       </g>
+
+                      {/* Main Pin */}
                       <ellipse cx="100" cy="190" rx="20" ry="6" fill="#000000" opacity="0.3" />
                       <path fillRule="evenodd" clipRule="evenodd" d="M100 25 C60 25 25 60 25 100 C25 140 90 185 100 190 C110 185 175 140 175 100 C175 60 140 25 100 25 Z" fill="url(#pinGradientAuth)" />
                       <circle cx="100" cy="100" r="42" fill="#4f46e5" />

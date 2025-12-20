@@ -429,7 +429,7 @@ const App: React.FC = () => {
   // LOADING SCREEN FOR AUTH CHECK
   if (authLoading) {
     return (
-      <div className="fixed inset-0 bg-white dark:bg-slate-950 flex items-center justify-center">
+      <div className="fixed inset-0 bg-off-white dark:bg-slate-950 flex items-center justify-center">
          <div className="flex flex-col items-center gap-4">
             <Loader2 className="w-10 h-10 text-brand-violet animate-spin" />
             <p className="text-slate-500 font-bold animate-pulse">Initializing Retriva...</p>
@@ -520,10 +520,10 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300 flex flex-col">
+    <div className="min-h-screen bg-off-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300 flex flex-col">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      <nav className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6">
+      <nav className="sticky top-0 z-40 bg-off-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto h-20 flex items-center justify-between py-3">
             <div className="flex items-center gap-10">
               <div className="flex items-center gap-4 cursor-pointer group" onClick={() => { setView('DASHBOARD'); setEditingReport(null); }}>

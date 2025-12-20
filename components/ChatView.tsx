@@ -159,7 +159,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
         <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
           <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Messages</h2>
-              <button onClick={onBack} className="p-2 text-slate-400 hover:text-brand-violet transition-colors rounded-full hover:bg-slate-50 dark:hover:bg-slate-800" title="Back to Dashboard">
+              <button onClick={onBack} className="p-2 text-slate-400 hover:text-brand-violet transition-colors rounded-full hover:bg-off-white dark:hover:bg-slate-800" title="Back to Dashboard">
                  <Home className="w-5 h-5" />
               </button>
           </div>
@@ -170,7 +170,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search conversations..." 
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border-none outline-none focus:ring-0 text-sm font-medium transition-all"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-off-white dark:bg-slate-950 border-none outline-none focus:ring-0 text-sm font-medium transition-all"
             />
           </div>
         </div>
@@ -185,7 +185,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                 className={`p-3.5 rounded-2xl cursor-pointer transition-all mb-2 border border-transparent ${
                     activeChatId === chat.id 
                     ? 'bg-indigo-50 dark:bg-slate-800 shadow-sm border-indigo-100 dark:border-slate-700' 
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    : 'hover:bg-off-white dark:hover:bg-slate-800/50'
                 }`}
                 >
                 <div className="flex items-center gap-4">
@@ -225,7 +225,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
       </div>
 
       {/* Main Chat Area */}
-      <div className={`flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 ${!activeChatId ? 'hidden md:flex' : 'flex'} relative`}>
+      <div className={`flex-1 flex flex-col bg-off-white/50 dark:bg-slate-950/50 ${!activeChatId ? 'hidden md:flex' : 'flex'} relative`}>
         {selectedChat ? (
           <>
             {/* Header */}
@@ -359,7 +359,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
 
             {/* Input */}
             {theyBlockedMe ? (
-              <div className="p-6 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-center shrink-0">
+              <div className="p-6 bg-off-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-center shrink-0">
                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-bold border border-red-100 dark:border-red-900/30">
                      <ShieldBan className="w-4 h-4" /> You cannot reply to this conversation
                  </div>
@@ -372,7 +372,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                       <Paperclip className="w-5 h-5" />
                     </button>
                     
-                    <div className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-2xl flex items-center border border-transparent focus-within:ring-2 focus-within:ring-brand-violet/20 transition-all">
+                    <div className="flex-1 bg-off-white dark:bg-slate-950 rounded-2xl flex items-center border border-transparent focus-within:ring-2 focus-within:ring-brand-violet/20 transition-all">
                        <textarea
                         value={newMessage}
                         onChange={handleTyping}
@@ -407,7 +407,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-300 dark:text-slate-700 p-8">
-            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center mb-6 ring-4 ring-slate-50 dark:ring-slate-800">
+            <div className="w-20 h-20 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center mb-6 ring-4 ring-off-white dark:ring-slate-800">
               <MessageCircle className="w-10 h-10 text-slate-300 dark:text-slate-600" />
             </div>
             <p className="font-bold text-lg text-slate-400 dark:text-slate-600">Select a chat to start messaging</p>
