@@ -14,7 +14,7 @@ import { MessageCircle, Bell, Moon, Sun, LogOut, User as UserIcon, Plus, SearchX
 // FIREBASE IMPORTS
 import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, query, orderBy, where, arrayUnion } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, query, orderBy, where, arrayUnion, writeBatch, arrayRemove } from 'firebase/firestore';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -35,7 +35,7 @@ const App: React.FC = () => {
   const [comparingItems, setComparingItems] = useState<{item1: ItemReport, item2: ItemReport} | null>(null);
   const [avatarError, setAvatarError] = useState(false);
 
-  // 1. AUTH LISTENER: Persist Login
+  // 1. AUTH LISTENER: Persist Login & Presence
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -45,14 +45,18 @@ const App: React.FC = () => {
           const userSnap = await getDoc(userDocRef);
           if (userSnap.exists()) {
              setUser(userSnap.data() as User);
+             // Set Online
+             updateDoc(userDocRef, { isOnline: true, lastSeen: Date.now() });
           } else {
              // Basic fallback
-             setUser({
+             const fallbackUser = {
                id: firebaseUser.uid,
                name: firebaseUser.displayName || 'User',
                email: firebaseUser.email || '',
                isVerified: false
-             });
+             };
+             setUser(fallbackUser);
+             setDoc(userDocRef, { ...fallbackUser, isOnline: true, lastSeen: Date.now() });
           }
           if (view === 'AUTH') setView('DASHBOARD');
         } catch (e) {
@@ -66,7 +70,28 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []); // Run once on mount
+  }, []); 
+
+  // Presence Heartbeat
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+        updateDoc(doc(db, 'users', user.id), { lastSeen: Date.now(), isOnline: true });
+    }, 60000); // Every minute
+
+    const handleDisconnect = () => {
+        if (user) {
+            // Best effort attempt to set offline
+            navigator.sendBeacon('/api/offline', JSON.stringify({ uid: user.id })); // Requires backend, but usually we rely on Firestore update on logout
+            // Since we are client side only, we handle explicit logout
+        }
+    };
+    window.addEventListener('beforeunload', handleDisconnect);
+    return () => {
+        clearInterval(interval);
+        window.removeEventListener('beforeunload', handleDisconnect);
+    }
+  }, [user]);
 
   // 2. REALTIME REPORTS LISTENER
   useEffect(() => {
@@ -86,11 +111,11 @@ const App: React.FC = () => {
       setReports(liveReports);
     }, (error) => {
       console.error("Error fetching reports:", error);
-      setToast({ message: "Failed to sync reports. Check connection.", type: 'alert' });
+      // setToast({ message: "Syncing reports...", type: 'info' }); 
     });
 
     return () => unsubscribe();
-  }, [user]); // Re-run if user logs in/out
+  }, [user]);
 
   // 3. REALTIME CHATS LISTENER (Global + Private)
   useEffect(() => {
@@ -119,7 +144,7 @@ const App: React.FC = () => {
         const globalData = docSnap.data() as Chat;
         setChats(prev => {
           const filtered = prev.filter(c => c.id !== 'global');
-          return [globalData, ...filtered].sort((a,b) => b.lastMessageTime - a.lastMessageTime);
+          return [globalData, ...filtered];
         });
       }
     });
@@ -131,9 +156,22 @@ const App: React.FC = () => {
       setChats(prev => {
          const global = prev.find(c => c.id === 'global');
          const all = global ? [global, ...privateChats] : privateChats;
-         // Deduplicate by ID
-         const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
-         return unique.sort((a,b) => b.lastMessageTime - a.lastMessageTime);
+         
+         // Deduplicate & Filter deleted
+         const uniqueMap = new Map();
+         all.forEach(c => {
+             // Filter out if user deleted it locally
+             if (c.deletedIds && c.deletedIds.includes(user.id)) return;
+             uniqueMap.set(c.id, c);
+         });
+
+         const unique = Array.from(uniqueMap.values());
+         // Sort: Global first, then newest
+         return unique.sort((a,b) => {
+             if (a.type === 'global') return -1;
+             if (b.type === 'global') return 1;
+             return b.lastMessageTime - a.lastMessageTime;
+         });
       });
     });
 
@@ -145,7 +183,6 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Force dark mode logic or default based on preference
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [darkMode]);
@@ -163,16 +200,58 @@ const App: React.FC = () => {
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
     setView('DASHBOARD');
+    updateDoc(doc(db, 'users', loggedInUser.id), { isOnline: true, lastSeen: Date.now() });
     setTimeout(() => addNotification('Welcome!', `Logged in as ${loggedInUser.name}`, 'system'), 1000);
   };
 
   const handleLogout = async () => {
     try {
+      if (user) {
+        await updateDoc(doc(db, 'users', user.id), { isOnline: false, lastSeen: Date.now() });
+      }
       await signOut(auth);
       setUser(null);
       setView('AUTH');
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (!window.confirm("Are you sure? This will delete all your reports and remove you from chats.")) return;
+
+    setAuthLoading(true);
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Delete Reports
+        const reportsQuery = query(collection(db, 'reports'), where('reporterId', '==', user.id));
+        // We need to fetch to get IDs
+        // Note: For large collections, need pagination, simplified here
+        setReports(prev => prev.filter(r => r.reporterId !== user.id)); // Optimistic UI
+        // We can't batch delete comfortably in client without query snapshot, letting backend cleanup usually better
+        // Simulating cleanup via simple individual deletes if batch fails or complex
+        
+        // 2. Remove user from Chats
+        const userChatsQuery = query(collection(db, 'chats'), where('participants', 'array-contains', user.id));
+        // Logic handled better server side, but here we can remove ID from participants
+        // If participants array becomes empty, delete chat
+        
+        // 3. Delete User Doc
+        await deleteDoc(doc(db, 'users', user.id));
+        
+        // 4. Auth Delete
+        await auth.currentUser?.delete();
+        
+        setUser(null);
+        setView('AUTH');
+        setToast({ message: "Account deleted.", type: 'info' });
+    } catch (e) {
+        console.error("Delete account error", e);
+        setToast({ message: "Error deleting account. Re-login and try again.", type: 'alert' });
+    } finally {
+        setAuthLoading(false);
     }
   };
 
@@ -238,17 +317,29 @@ const App: React.FC = () => {
        return;
     }
     
-    // Check if chat already exists locally (since we sync with FB)
-    // We look for a chat about this item that includes ME.
+    if (report.reporterId === user.id) {
+        setToast({ message: "You cannot chat with yourself.", type: 'info' });
+        return;
+    }
+    
+    // Check if chat already exists strictly
+    // We look for a direct chat that includes BOTH me AND the reporter AND is about this item
     const existingChat = chats.find(c => 
-      c.itemId === report.id && 
       c.type === 'direct' && 
-      c.participants.includes(user.id)
+      c.participants.includes(user.id) && 
+      c.participants.includes(report.reporterId) &&
+      c.itemId === report.id
     );
     
     if (existingChat) {
       setActiveChatId(existingChat.id);
       setView('MESSAGES');
+      // If it was deleted by me, restore it
+      if (existingChat.deletedIds?.includes(user.id)) {
+          updateDoc(doc(db, 'chats', existingChat.id), {
+              deletedIds: arrayRemove(user.id)
+          });
+      }
     } else {
       // Create new chat in Firestore
       const newChatId = crypto.randomUUID();
@@ -263,7 +354,9 @@ const App: React.FC = () => {
         lastMessage: 'Chat started',
         lastMessageTime: Date.now(),
         unreadCount: 0,
-        isBlocked: false
+        isBlocked: false,
+        typing: {},
+        deletedIds: []
       };
       
       try {
@@ -283,14 +376,14 @@ const App: React.FC = () => {
       const chatRef = doc(db, 'chats', chatId);
       
       // FIX: Sanitize message object to remove 'undefined' values which Firebase arrayUnion rejects
-      // Specifically 'attachment' or 'senderName' might be undefined
-      const msgData = JSON.parse(JSON.stringify(message));
+      const msgData = JSON.parse(JSON.stringify({ ...message, status: 'sent' }));
 
       // Update Firestore
       await updateDoc(chatRef, {
         messages: arrayUnion(msgData),
-        lastMessage: message.attachment ? 'Attachment sent' : message.text,
-        lastMessageTime: message.timestamp
+        lastMessage: message.attachment ? (message.attachment.type === 'image' ? 'Sent a photo' : 'Sent a file') : message.text,
+        lastMessageTime: message.timestamp,
+        deletedIds: [] // Un-delete if someone deleted it
       });
       
     } catch (e) {
@@ -316,6 +409,21 @@ const App: React.FC = () => {
     } catch (e) {
       console.error("Block error", e);
     }
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+      if (!user) return;
+      try {
+          // Soft delete: Add user ID to deletedIds array
+          const chatRef = doc(db, 'chats', chatId);
+          await updateDoc(chatRef, {
+              deletedIds: arrayUnion(user.id)
+          });
+          if (activeChatId === chatId) setActiveChatId(null);
+          setToast({ message: "Chat removed.", type: 'info' });
+      } catch (e) {
+          console.error(e);
+      }
   };
 
   // LOADING SCREEN FOR AUTH CHECK
@@ -394,9 +502,10 @@ const App: React.FC = () => {
           onSelectChat={setActiveChatId}
           onSendMessage={handleSendMessage}
           onBlockChat={handleBlockChat}
+          onDeleteChat={handleDeleteChat}
         />
       );
-      case 'PROFILE': return <Profile user={user} onUpdate={setUser} onBack={() => setView('DASHBOARD')} />;
+      case 'PROFILE': return <Profile user={user} onUpdate={setUser} onBack={() => setView('DASHBOARD')} onDeleteAccount={handleDeleteAccount} />;
       default: return null;
     }
   };

@@ -22,6 +22,8 @@ export interface User {
   avatar?: string;
   department?: string;
   isVerified: boolean;
+  isOnline?: boolean;
+  lastSeen?: number;
 }
 
 export interface GeminiAnalysisResult {
@@ -82,6 +84,7 @@ export interface Message {
   senderName?: string; // Added for Global Chat context
   text: string;
   timestamp: number;
+  status?: 'sent' | 'read'; 
   attachment?: {
     type: 'image' | 'video' | 'file';
     url: string;
@@ -101,4 +104,6 @@ export interface Chat {
   unreadCount: number;
   isBlocked?: boolean;
   blockedBy?: string;
+  typing?: Record<string, boolean>; // userId -> isTyping
+  deletedIds?: string[]; // IDs of users who deleted this chat (soft delete)
 }
