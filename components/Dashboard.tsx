@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, ItemCategory, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2 } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -24,18 +24,26 @@ interface ReportCardProps {
 const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
   const [imgError, setImgError] = useState(false);
   const isLost = report.type === ReportType.LOST;
+  const isResolved = report.status === 'RESOLVED';
 
   return (
     <div 
       onClick={onClick}
       className={`group bg-white dark:bg-slate-900 rounded-[1.5rem] border overflow-hidden hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col h-full relative border-slate-200 dark:border-slate-800
-        ${isLost ? 'hover:border-orange-500/50 hover:shadow-2xl hover:shadow-orange-500/20' : 'hover:border-teal-500/50 hover:shadow-2xl hover:shadow-teal-500/20'}
+        ${isResolved ? 'opacity-75 grayscale-[0.5] hover:opacity-100 hover:grayscale-0' : 
+          (isLost ? 'hover:border-orange-500/50 hover:shadow-2xl hover:shadow-orange-500/20' : 'hover:border-teal-500/50 hover:shadow-2xl hover:shadow-teal-500/20')
+        }
       `}
     >
-       <div className="absolute top-3 left-3 z-10">
+       <div className="absolute top-3 left-3 z-10 flex gap-2">
           <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide shadow-lg text-white backdrop-blur-md ${isLost ? 'bg-orange-500/90' : 'bg-teal-500/90'}`}>
             {isLost ? 'Lost' : 'Found'}
           </span>
+          {isResolved && (
+            <span className="px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide shadow-lg text-white backdrop-blur-md bg-emerald-500/90 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> Resolved
+            </span>
+          )}
        </div>
 
       <div className="h-52 bg-slate-100 dark:bg-slate-800 relative overflow-hidden">
@@ -54,7 +62,9 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{report.category}</span>
                 <span className="text-[10px] font-medium text-slate-400">{report.date}</span>
             </div>
-            <h3 className={`font-bold text-lg text-slate-900 dark:text-white leading-tight line-clamp-2 ${isLost ? 'group-hover:text-orange-600' : 'group-hover:text-teal-600'}`}>
+            <h3 className={`font-bold text-lg text-slate-900 dark:text-white leading-tight line-clamp-2 ${
+                isResolved ? 'text-slate-500' : (isLost ? 'group-hover:text-orange-600' : 'group-hover:text-teal-600')
+            }`}>
                 {report.title}
             </h3>
           </div>
@@ -66,9 +76,11 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
 
       <div className="px-5 pb-5 pt-0">
          <button className={`w-full py-2.5 rounded-xl bg-off-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs transition-all flex items-center justify-center gap-2
-            ${isLost ? 'group-hover:bg-orange-600 group-hover:text-white' : 'group-hover:bg-teal-600 group-hover:text-white'}
+            ${isResolved ? 'hover:bg-slate-200 dark:hover:bg-slate-700' : 
+              (isLost ? 'group-hover:bg-orange-600 group-hover:text-white' : 'group-hover:bg-teal-600 group-hover:text-white')
+            }
          `}>
-            View Details <ArrowRight className="w-3.5 h-3.5" />
+            {isResolved ? 'View History' : 'View Details'} <ArrowRight className="w-3.5 h-3.5" />
          </button>
       </div>
     </div>
@@ -77,6 +89,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onResolve, onEditReport, onDeleteReport, onCompare, onChatStart }) => {
   const [activeTab, setActiveTab] = useState<ReportType>(ReportType.LOST);
+  const [viewStatus, setViewStatus] = useState<'OPEN' | 'RESOLVED'>('OPEN');
   const [searchQuery, setSearchQuery] = useState('');
   const [isProcessingSearch, setIsProcessingSearch] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ItemReport | null>(null);
@@ -87,13 +100,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
   const [isScanningMatches, setIsScanningMatches] = useState(false);
 
   const filteredReports = useMemo(() => {
-    let result = reports.filter(r => r.type === activeTab && r.status === 'OPEN');
+    // Filter by Type AND Status
+    let result = reports.filter(r => r.type === activeTab && r.status === viewStatus);
+    
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(r => r.title.toLowerCase().includes(q) || r.location.toLowerCase().includes(q));
     }
     return result.sort((a, b) => b.createdAt - a.createdAt);
-  }, [reports, activeTab, searchQuery]);
+  }, [reports, activeTab, viewStatus, searchQuery]);
 
   const handleSmartSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -279,19 +294,54 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
       {/* Main Content Feed */}
       <section className="space-y-6">
-         <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-            <div className="flex p-1 bg-off-white dark:bg-slate-800 rounded-xl">
-               <button onClick={() => setActiveTab(ReportType.LOST)} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.LOST ? 'bg-white dark:bg-slate-700 text-orange-600 shadow-sm' : 'text-slate-500'}`}>Lost</button>
-               <button onClick={() => setActiveTab(ReportType.FOUND)} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.FOUND ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-500'}`}>Found</button>
+         <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center gap-4">
+            
+            {/* Filter Group */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex p-1 bg-off-white dark:bg-slate-800 rounded-xl shrink-0">
+                   <button onClick={() => setActiveTab(ReportType.LOST)} className={`px-4 sm:px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.LOST ? 'bg-white dark:bg-slate-700 text-orange-600 shadow-sm' : 'text-slate-500'}`}>Lost</button>
+                   <button onClick={() => setActiveTab(ReportType.FOUND)} className={`px-4 sm:px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.FOUND ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-500'}`}>Found</button>
+                </div>
+                
+                {/* View History Toggle */}
+                <button 
+                  onClick={() => setViewStatus(prev => prev === 'OPEN' ? 'RESOLVED' : 'OPEN')}
+                  className={`p-2.5 rounded-xl border transition-all ${viewStatus === 'RESOLVED' 
+                    ? 'bg-indigo-50 dark:bg-slate-800 border-indigo-200 dark:border-slate-700 text-indigo-600' 
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600'
+                  }`}
+                  title={viewStatus === 'OPEN' ? "Show Resolved History" : "Show Active Reports"}
+                >
+                   <History className="w-5 h-5" />
+                </button>
             </div>
-            <div className="relative flex-1">
+
+            <div className="relative flex-1 w-full">
                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSmartSearch()} placeholder="Describe what you are looking for..." className="w-full pl-10 pr-4 py-3 bg-off-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-brand-violet/20 transition-all" />
                {isProcessingSearch && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-brand-violet" />}
             </div>
          </div>
+
+         {/* Section Title for Context */}
+         <div className="flex items-center gap-2 px-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              {viewStatus === 'RESOLVED' ? 'Resolved Archive' : 'Active Listings'}
+            </h3>
+            <span className="text-xs text-slate-500">({filteredReports.length} items)</span>
+         </div>
+
          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredReports.map(report => <ReportCard key={report.id} report={report} onClick={() => setSelectedReport(report)} />)}
+            {filteredReports.length === 0 && (
+               <div className="col-span-full py-20 text-center flex flex-col items-center justify-center text-slate-400">
+                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center mb-4">
+                     {viewStatus === 'RESOLVED' ? <History className="w-8 h-8 opacity-50" /> : <SearchX className="w-8 h-8 opacity-50" />}
+                  </div>
+                  <p className="font-bold">No {viewStatus === 'RESOLVED' ? 'resolved' : 'active'} items found.</p>
+                  <p className="text-xs mt-1">Try changing the category or search terms.</p>
+               </div>
+            )}
          </div>
       </section>
     </div>
