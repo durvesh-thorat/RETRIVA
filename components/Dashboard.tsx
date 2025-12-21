@@ -312,91 +312,112 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           </div>
       </section>
 
-      {/* ALWAYS ACTIVE AI MATCH CENTER - REFINED DESIGN */}
-      <div id="match-center" className="animate-fade-in space-y-4 scroll-mt-24 mb-12">
-           <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-3">
+      {/* ALWAYS ACTIVE AI MATCH CENTER - REFINED VISUALS */}
+      <div id="match-center" className="animate-fade-in space-y-6 scroll-mt-24 mb-12">
+           <div className="flex items-center justify-between px-2 mb-2">
+              <div className="flex items-center gap-4">
                 <div className="relative">
-                   <div className="p-2 bg-gradient-to-br from-brand-violet to-purple-600 rounded-xl shadow-lg shadow-brand-violet/20">
-                      <Radar className={`w-5 h-5 text-white ${isAutoScanning ? 'animate-spin' : ''}`} />
+                   <div className="absolute inset-0 bg-brand-violet/20 rounded-full blur-md animate-pulse"></div>
+                   <div className="relative p-2.5 bg-gradient-to-br from-brand-violet to-purple-600 rounded-2xl shadow-xl shadow-brand-violet/20 border border-white/10">
+                      <Radar className={`w-6 h-6 text-white ${isAutoScanning ? 'animate-spin' : ''}`} />
                    </div>
                    {isAutoScanning && <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span></span>}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Live Intelligence</h2>
-                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                    {isAutoScanning ? 'Analyzing New Data...' : `Monitoring ${myItemsCount} Active Reports`}
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Live Intelligence</h2>
+                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2 opacity-80">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isAutoScanning ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`}></span>
+                    {isAutoScanning ? 'Analyzing Data Streams...' : `Monitoring ${myItemsCount} Active Reports`}
                   </p>
                 </div>
               </div>
               
               {hasMatches && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-full animate-pulse-soft">
-                   <Sparkles className="w-3 h-3 text-emerald-500" />
-                   <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Action Required</span>
+                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-500/20 border border-emerald-400 transform hover:scale-105 transition-transform cursor-default">
+                   <Sparkles className="w-3.5 h-3.5" />
+                   <span className="text-[10px] font-black uppercase tracking-widest">Action Required</span>
                 </div>
               )}
            </div>
 
-           <div className={`rounded-[2rem] border transition-all overflow-hidden relative min-h-[160px] ${hasMatches ? 'bg-indigo-50/50 dark:bg-slate-900/50 border-indigo-100 dark:border-indigo-900/30' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+           <div className={`rounded-[2rem] border overflow-hidden transition-all duration-500 relative min-h-[160px] ${hasMatches ? 'bg-slate-50/50 dark:bg-slate-900/40 border-indigo-200/50 dark:border-indigo-900/30 shadow-2xl shadow-indigo-500/5' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
               
-              {/* Background pattern */}
-              <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(rgba(99,102,241,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.5)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+              {/* Tech Overlay Effects */}
+              {isAutoScanning && (
+                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-brand-violet to-transparent animate-shimmer-fast z-10 opacity-50"></div>
+              )}
+              {/* Subtle Vignette Gradient */}
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-500/5 via-transparent to-transparent pointer-events-none"></div>
 
-              <div className="p-6 relative z-10">
+              <div className="p-6 sm:p-8 relative z-10">
                  {isAutoScanning && !hasMatches ? (
                     <div className="flex flex-col items-center justify-center py-10">
                        <Loader2 className="w-8 h-8 text-brand-violet animate-spin mb-3" />
                        <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Scanning new reports...</p>
                     </div>
                  ) : hasMatches ? (
-                    <div className="space-y-8">
+                    <div className="space-y-10">
                        {Object.entries(matches).map(([sourceId, matchedItems]) => {
                           const sourceItem = reports.find(r => r.id === sourceId);
                           if (!sourceItem) return null;
 
                           return (
-                             <div key={sourceId} className="animate-slide-up">
-                                <div className="flex items-center gap-3 mb-4">
-                                   <div className="w-2 h-2 rounded-full bg-brand-violet"></div>
-                                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                                      Candidates for your <span className="text-slate-900 dark:text-white border-b-2 border-brand-violet/20 pb-0.5">{sourceItem.title}</span>
+                             <div key={sourceId} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="flex items-center gap-4 mb-5 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
+                                   <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                       <ScanLine className="w-4 h-4" />
+                                   </div>
+                                   <div>
+                                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Source</div>
+                                       <div className="text-sm font-bold text-slate-900 dark:text-white">{sourceItem.title}</div>
                                    </div>
                                 </div>
                                 
                                 {/* Concise Grid Layout */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                    {matchedItems.map(match => (
                                       <div 
                                         key={match.id} 
                                         onClick={() => onCompare(sourceItem, match)} 
-                                        className="group bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-brand-violet hover:shadow-xl transition-all cursor-pointer flex items-center gap-4"
+                                        className="group relative bg-white dark:bg-slate-800 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 hover:border-brand-violet/40 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)] transition-all duration-300 cursor-pointer overflow-hidden"
                                       >
-                                         {/* Compare Visual */}
-                                         <div className="flex items-center gap-2 shrink-0">
-                                            {/* My Item Tiny */}
-                                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 overflow-hidden relative opacity-60 grayscale group-hover:grayscale-0 transition-all">
-                                                {sourceItem.imageUrls[0] ? <img src={sourceItem.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-4 h-4 m-auto text-slate-400" />}
+                                         {/* Hover Gradient */}
+                                         <div className="absolute inset-0 bg-gradient-to-br from-brand-violet/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+
+                                         <div className="flex gap-4 relative z-10">
+                                            {/* Compare Visual */}
+                                            <div className="relative h-20 w-32 shrink-0">
+                                                {/* Source Item (Tiny, blurred background effect) */}
+                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-900 overflow-hidden border-2 border-white dark:border-slate-700 shadow-sm z-10 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
+                                                    {sourceItem.imageUrls[0] ? <img src={sourceItem.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-4 h-4 m-auto text-slate-400" />}
+                                                </div>
+                                                
+                                                {/* Target Item (Main focus) */}
+                                                <div className="absolute right-0 top-0 w-20 h-20 rounded-xl bg-slate-200 dark:bg-slate-900 overflow-hidden shadow-md group-hover:scale-105 transition-transform duration-500 z-20 ring-1 ring-black/5 dark:ring-white/5">
+                                                    {match.imageUrls[0] ? <img src={match.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-6 h-6 m-auto text-slate-400" />}
+                                                </div>
+
+                                                {/* Connector Line */}
+                                                <div className="absolute left-10 top-1/2 w-10 h-[2px] bg-brand-violet/20 group-hover:bg-brand-violet/50 z-0"></div>
                                             </div>
                                             
-                                            <ArrowLeftRight className="w-3 h-3 text-brand-violet/50" />
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0 py-1 flex flex-col justify-between">
+                                                <div>
+                                                   <div className="flex justify-between items-start mb-1">
+                                                      <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate pr-2 group-hover:text-brand-violet transition-colors">{match.title}</h4>
+                                                      <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-wider border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">
+                                                         Match
+                                                      </span>
+                                                   </div>
+                                                   <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                                                      <MapPin className="w-3 h-3" /> {match.location}
+                                                   </div>
+                                                </div>
 
-                                            {/* Found Item Main */}
-                                            <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-900 overflow-hidden relative shadow-sm group-hover:scale-105 transition-transform">
-                                                {match.imageUrls[0] ? <img src={match.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-6 h-6 m-auto text-slate-400" />}
-                                                <div className="absolute inset-0 bg-brand-violet/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                            </div>
-                                         </div>
-                                         
-                                         {/* Info */}
-                                         <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-start mb-1">
-                                               <h4 className="font-bold text-slate-900 dark:text-white text-xs truncate">{match.title}</h4>
-                                               <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded uppercase">Match</span>
-                                            </div>
-                                            <p className="text-[10px] text-slate-500 line-clamp-1 mb-2">{match.location} • {match.date}</p>
-                                            <div className="text-[9px] font-black uppercase tracking-widest text-brand-violet group-hover:underline">
-                                               Compare Items
+                                                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 group-hover:text-brand-violet transition-colors mt-2">
+                                                   Compare Details <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
+                                                </div>
                                             </div>
                                          </div>
                                       </div>
