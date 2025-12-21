@@ -456,22 +456,29 @@ const FeaturesPage: React.FC<FeaturesPageProps> = ({ onBack }) => {
           <section className="mt-32 pt-20 border-t border-white/5">
              <div className="text-center mb-16">
                <h2 className="text-4xl font-black text-white mb-4">The Team</h2>
-               <p className="text-slate-400">The minds behind the machine.</p>
+               <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
+                 We are <span className="font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">4SCRIPT</span>.
+                 <br/>
+                 A unified collective of developers where everyone contributed to every part of the stack.
+               </p>
              </div>
              
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                   { name: "Teammate 1", role: "Full Stack Engineer", icon: Code2, bgClass: "bg-indigo-500/20", hoverBgClass: "group-hover:bg-indigo-500", iconColorClass: "text-indigo-300", roleColorClass: "text-indigo-400" },
-                   { name: "Teammate 2", role: "AI Specialist", icon: BrainCircuit, bgClass: "bg-purple-500/20", hoverBgClass: "group-hover:bg-purple-500", iconColorClass: "text-purple-300", roleColorClass: "text-purple-400" },
-                   { name: "Teammate 3", role: "Product Designer", icon: Sparkles, bgClass: "bg-pink-500/20", hoverBgClass: "group-hover:bg-pink-500", iconColorClass: "text-pink-300", roleColorClass: "text-pink-400" },
-                   { name: "Teammate 4", role: "Backend Architect", icon: Server, bgClass: "bg-emerald-500/20", hoverBgClass: "group-hover:bg-emerald-500", iconColorClass: "text-emerald-300", roleColorClass: "text-emerald-400" },
+                   { name: "Durvesh Thorat", branch: "Information Technology", icon: Code2, bgClass: "bg-indigo-500/20", hoverBgClass: "group-hover:bg-indigo-500", iconColorClass: "text-indigo-300" },
+                   { name: "Kaustubh Bhoir", branch: "Computer Engineering", icon: BrainCircuit, bgClass: "bg-purple-500/20", hoverBgClass: "group-hover:bg-purple-500", iconColorClass: "text-purple-300" },
+                   { name: "Nipun Tamore", branch: "Information Technology", icon: Sparkles, bgClass: "bg-pink-500/20", hoverBgClass: "group-hover:bg-pink-500", iconColorClass: "text-pink-300" },
+                   { name: "Srushtee Gawande", branch: "Information Technology", icon: Server, bgClass: "bg-emerald-500/20", hoverBgClass: "group-hover:bg-emerald-500", iconColorClass: "text-emerald-300" },
                 ].map((member, i) => (
-                  <div key={i} className="group relative bg-white/5 border border-white/10 rounded-3xl p-8 hover:-translate-y-2 transition-transform duration-300">
+                  <div key={i} className="group relative bg-white/5 border border-white/10 rounded-3xl p-8 hover:-translate-y-2 transition-transform duration-300 flex flex-col items-center">
                      <div className={`w-20 h-20 mx-auto ${member.bgClass} rounded-full mb-6 flex items-center justify-center ${member.hoverBgClass} transition-colors`}>
                         <member.icon className={`w-10 h-10 ${member.iconColorClass} group-hover:text-white`} />
                      </div>
-                     <h3 className="text-xl font-bold text-white mb-1">{member.name}</h3>
-                     <p className={`text-xs font-bold ${member.roleColorClass} uppercase tracking-widest`}>{member.role}</p>
+                     <h3 className="text-xl font-bold text-white text-center mb-1">{member.name}</h3>
+                     <p className="text-sm text-slate-400 font-medium text-center">{member.branch}</p>
+                     <span className="mt-3 px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold uppercase tracking-widest text-slate-500 border border-white/5">
+                        First Year
+                     </span>
                   </div>
                 ))}
              </div>
