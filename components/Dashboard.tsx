@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ItemReport, ReportType, ItemCategory, User, ViewState } from '../types';
 import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap, Cpu, AlertCircle, Radar } from 'lucide-react';
@@ -225,34 +224,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                       
                       {/* Title */}
                       <h1 className="font-black tracking-tighter leading-[0.9] text-white" style={{ fontSize: 'clamp(2.5rem, 8vw, 4.5rem)' }}>
-                        Campus <br/>
-                        Lost & Found.
+                        From Lost <br/>
+                        to Retrieved
                       </h1>
                       
                       {/* Description */}
                       <p className="text-slate-400 text-base md:text-lg font-medium max-w-md leading-relaxed">
-                        Find your items instantly with Retriva's smart matching engine.
+                        Reconnect with what you’ve lost.
                       </p>
 
                       {/* NEW FEATURES BUTTON: Under the Hood - UPDATED DESIGN */}
-                      <button 
-                        onClick={() => onNavigate('FEATURES')}
-                        className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-500/30 transition-all duration-500 shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 overflow-hidden backdrop-blur-sm"
-                      >
-                         {/* Animated Gradient Background on Hover */}
-                         <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-indigo-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-gradient-slow"></div>
-                         
-                         {/* Tech Scan Line */}
-                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer-fast pointer-events-none"></div>
+                      <div>
+                        <button 
+                          onClick={() => onNavigate('FEATURES')}
+                          className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-500/30 transition-all duration-500 shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 overflow-hidden backdrop-blur-sm"
+                        >
+                           {/* Animated Gradient Background on Hover */}
+                           <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-indigo-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-gradient-slow"></div>
+                           
+                           {/* Tech Scan Line */}
+                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer-fast pointer-events-none"></div>
 
-                         <div className="relative flex items-center gap-3">
-                             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 group-hover:bg-indigo-500 text-indigo-400 group-hover:text-white transition-all duration-300">
-                                <Cpu className="w-4 h-4" />
-                             </div>
-                             <span className="text-slate-300 group-hover:text-white font-bold text-sm tracking-wide transition-colors uppercase">Under the Hood</span>
-                             <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                         </div>
-                      </button>
+                           <div className="relative flex items-center gap-3">
+                               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/20 group-hover:bg-indigo-500 text-indigo-400 group-hover:text-white transition-all duration-300">
+                                  <Cpu className="w-4 h-4" />
+                               </div>
+                               <span className="text-slate-300 group-hover:text-white font-bold text-sm tracking-wide transition-colors uppercase">Under the Hood</span>
+                               <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                           </div>
+                        </button>
+                        <p className="mt-2 text-xs text-slate-500 font-medium ml-2">System design and core ideas</p>
+                      </div>
                   </div>
 
                   {/* Buttons */}
@@ -267,7 +269,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                        </div>
                        <div className="relative z-10 text-left">
                           <h3 className="font-bold text-lg text-white leading-tight">I Lost Something</h3>
-                          <p className="text-xs text-slate-400 group-hover:text-slate-200 font-medium transition-colors">Create a report for lost items</p>
+                          <p className="text-xs text-slate-400 group-hover:text-slate-200 font-medium transition-colors">Report a lost item</p>
                        </div>
                        <ArrowRight className="absolute right-6 w-5 h-5 text-white/30 group-hover:text-white group-hover:translate-x-1 transition-all" />
                      </button>
@@ -282,7 +284,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                        </div>
                        <div className="relative z-10 text-left">
                           <h3 className="font-bold text-lg text-white leading-tight">I Found Something</h3>
-                          <p className="text-xs text-slate-400 group-hover:text-slate-200 font-medium transition-colors">Report an item you found</p>
+                          <p className="text-xs text-slate-400 group-hover:text-slate-200 font-medium transition-colors">Report a found item</p>
                        </div>
                        <ArrowRight className="absolute right-6 w-5 h-5 text-white/30 group-hover:text-white group-hover:translate-x-1 transition-all" />
                      </button>
