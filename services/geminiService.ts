@@ -57,7 +57,8 @@ const GOOGLE_CASCADE = [
 ];
 
 // Fallback Model (Groq)
-const GROQ_MODEL = 'llama-3.2-11b-vision-preview'; // Free tier vision model
+// UPDATED: 11b decommissioned, switching to 90b vision preview or versatile if vision fails
+const GROQ_MODEL = 'llama-3.2-90b-vision-preview'; 
 
 /**
  * Robust JSON Cleaner: Extracts the first valid JSON object from a string.
@@ -155,7 +156,7 @@ export const testGroqConnection = async (): Promise<{ success: boolean; message:
     const start = Date.now();
     await callGroqAPI([{ role: "user", content: "ping" }], false);
     const latency = Date.now() - start;
-    return { success: true, message: `✅ Groq Connected! (Latency: ${latency}ms)` };
+    return { success: true, message: `✅ Groq Connected! Model: ${GROQ_MODEL} (Latency: ${latency}ms)` };
   } catch (e: any) {
     console.error("Groq Test Failed:", e);
     return { success: false, message: `❌ Groq Failed: ${e.message || "Unknown Error"}` };
