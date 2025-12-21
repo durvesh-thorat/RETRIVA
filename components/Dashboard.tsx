@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -211,17 +211,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
               <div className="relative z-10 w-full flex flex-col lg:flex-row gap-12 items-center justify-between">
                   <div className="space-y-6 max-w-xl">
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-black backdrop-blur-md text-white shadow-sm tracking-widest uppercase">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        AI Verified
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        Campus Secure
                       </div>
                       
                       <h1 className="font-black tracking-tighter leading-[0.9] text-white text-5xl lg:text-7xl">
-                        From Lost <br/>
-                        to Retrieved
+                        Campus <br/>
+                        Lost & Found.
                       </h1>
                       
                       <p className="text-slate-400 text-base md:text-lg font-medium max-w-md leading-relaxed">
-                        Reconnect with what you’ve lost. The smart way to find items on campus.
+                        Find your items instantly with Retriva's smart matching engine.
                       </p>
                   </div>
 
@@ -229,43 +229,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                   <div className="flex flex-col gap-4 w-full max-w-sm">
                      <button 
                        onClick={() => onNavigate('REPORT_LOST')} 
-                       className="group relative overflow-hidden p-4 rounded-xl bg-orange-500 hover:bg-orange-400 text-white shadow-lg shadow-orange-500/20 transition-all flex items-center gap-4 hover:-translate-y-1"
+                       className="group relative overflow-hidden p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-4 hover:border-white/20 hover:shadow-2xl"
                      >
-                       <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
+                       <div className="w-12 h-12 rounded-xl bg-orange-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 shrink-0 group-hover:scale-105 transition-transform duration-300">
                           <SearchX className="w-6 h-6" />
                        </div>
-                       <div className="text-left">
-                          <h3 className="font-bold text-sm leading-tight">I Lost Something</h3>
-                          <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider">Submit Report</p>
+                       <div className="flex-1 text-left min-w-0">
+                          <h3 className="font-bold text-base text-white leading-tight mb-0.5">I Lost Something</h3>
+                          <p className="text-[11px] text-slate-400 font-medium">Create a report for lost items</p>
                        </div>
-                       <ArrowRight className="ml-auto w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                       <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
                      </button>
 
                      <button 
                        onClick={() => onNavigate('REPORT_FOUND')} 
-                       className="group relative overflow-hidden p-4 rounded-xl bg-teal-500 hover:bg-teal-400 text-white shadow-lg shadow-teal-500/20 transition-all flex items-center gap-4 hover:-translate-y-1"
+                       className="group relative overflow-hidden p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-4 hover:border-white/20 hover:shadow-2xl"
                      >
-                       <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-white">
+                       <div className="w-12 h-12 rounded-xl bg-teal-500 flex items-center justify-center text-white shadow-lg shadow-teal-500/20 shrink-0 group-hover:scale-105 transition-transform duration-300">
                           <Box className="w-6 h-6" />
                        </div>
-                       <div className="text-left">
-                          <h3 className="font-bold text-sm leading-tight">I Found Something</h3>
-                          <p className="text-[10px] text-white/70 font-medium uppercase tracking-wider">Submit Report</p>
+                       <div className="flex-1 text-left min-w-0">
+                          <h3 className="font-bold text-base text-white leading-tight mb-0.5">I Found Something</h3>
+                          <p className="text-[11px] text-slate-400 font-medium">Report an item you found</p>
                        </div>
-                       <ArrowRight className="ml-auto w-5 h-5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                       <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
                      </button>
 
                      <button 
                        onClick={() => onNavigate('FEATURES')} 
-                       className="group relative overflow-hidden p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-all flex items-center gap-4 hover:-translate-y-1"
+                       className="group relative overflow-hidden p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-4 hover:border-white/20 hover:shadow-2xl"
                      >
-                       <div className="w-10 h-10 bg-white/5 rounded-lg flex items-center justify-center text-slate-400 group-hover:text-white">
-                          <Wrench className="w-5 h-5" />
+                       <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-600/20 shrink-0 group-hover:scale-105 transition-transform duration-300">
+                          <Wrench className="w-6 h-6" />
                        </div>
-                       <div className="text-left">
-                          <h3 className="font-bold text-sm leading-tight text-white">Under the Hood</h3>
-                          <p className="text-[10px] text-slate-500 group-hover:text-slate-400 font-medium uppercase tracking-wider">Tech Stack & Features</p>
+                       <div className="flex-1 text-left min-w-0">
+                          <h3 className="font-bold text-base text-white leading-tight mb-0.5">Under the Hood</h3>
+                          <p className="text-[11px] text-slate-400 font-medium">View Tech Stack & Features</p>
                        </div>
+                       <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
                      </button>
                   </div>
               </div>
