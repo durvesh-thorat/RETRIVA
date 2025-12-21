@@ -1,17 +1,26 @@
-
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import Groq from "groq-sdk";
 import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 
+export interface ComparisonResult {
+  confidence: number;
+  explanation: string;
+  similarities: string[];
+  differences: string[];
+}
+
 // Helper to safely get the API Key with priority for VITE_ prefix
-const getApiKey = (): string | undefined => {
+const getApiKey = (provider: 'GOOGLE' | 'GROQ'): string | undefined => {
   let key: string | undefined = undefined;
+  const targetKey = provider === 'GOOGLE' ? 'API_KEY' : 'GROQ_API_KEY';
+  const viteKey = `VITE_${targetKey}`;
 
   // 1. Try Vite standard (import.meta.env)
   try {
     // @ts-ignore
     if (import.meta.env) {
       // @ts-ignore
-      key = import.meta.env.VITE_API_KEY || import.meta.env.API_KEY;
+      key = import.meta.env[viteKey] || import.meta.env[targetKey];
     }
   } catch (e) {}
 
@@ -19,7 +28,7 @@ const getApiKey = (): string | undefined => {
   if (!key) {
     try {
       if (typeof process !== 'undefined' && process.env) {
-        key = process.env.VITE_API_KEY || process.env.API_KEY;
+        key = process.env[viteKey] || process.env[targetKey];
       }
     } catch (e) {}
   }
@@ -28,21 +37,33 @@ const getApiKey = (): string | undefined => {
 };
 
 const getAI = () => {
-  const apiKey = getApiKey();
+  const apiKey = getApiKey('GOOGLE');
   if (!apiKey) {
-    console.error("DEBUG: API Key lookup failed. Checked 'VITE_API_KEY' and 'API_KEY' in import.meta.env and process.env");
-    throw new Error("MISSING_API_KEY");
+    console.error("DEBUG: Google API Key missing.");
+    throw new Error("MISSING_GOOGLE_KEY");
   }
   return new GoogleGenAI({ apiKey });
 };
 
-// Model Cascade List: Primary -> Fallbacks
-const MODEL_CASCADE = [
+const getGroq = () => {
+  const apiKey = getApiKey('GROQ');
+  if (!apiKey) {
+    // Fail silently if no backup key provided, loop will just error out naturally
+    return null;
+  }
+  return new Groq({ apiKey, dangerouslyAllowBrowser: true });
+};
+
+// Model Cascade List: Primary (Google) -> Fallbacks
+const GOOGLE_CASCADE = [
   'gemini-3-flash-preview',
   'gemini-flash-latest',
   'gemini-flash-lite-latest',
   'gemini-3-pro-preview'
 ];
+
+// Fallback Model (Groq)
+const GROQ_MODEL = 'llama-3.2-11b-vision-preview'; // Free tier vision model
 
 /**
  * Robust JSON Cleaner: Extracts the first valid JSON object from a string.
@@ -60,43 +81,108 @@ const cleanJSON = (text: string): string => {
   if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
     cleaned = cleaned.substring(firstOpen, lastClose + 1);
   } else {
-    // If no brackets found, return empty object to prevent crash
     return "{}";
   }
 
   return cleaned.trim();
 };
 
+/**
+ * ADAPTER: Converts Gemini Input Format to Groq (OpenAI-compat) Format
+ */
+const convertGeminiToGroq = (contents: any) => {
+  const parts = contents.parts || [];
+  const contentArray: any[] = [];
+
+  parts.forEach((part: any) => {
+    if (part.text) {
+      contentArray.push({ type: "text", text: part.text });
+    } else if (part.inlineData) {
+      // Groq expects data URL
+      const mimeType = part.inlineData.mimeType || "image/jpeg";
+      const base64 = part.inlineData.data;
+      contentArray.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${mimeType};base64,${base64}`
+        }
+      });
+    }
+  });
+
+  return [
+    {
+      role: "user",
+      content: contentArray
+    }
+  ];
+};
+
 const generateWithCascade = async (
   params: any
-): Promise<GenerateContentResponse> => {
+): Promise<{ text: string }> => {
   let lastError: any;
-  let ai;
+  
+  // ---------------------------------------------------------
+  // 1. TRY GOOGLE GEMINI MODELS (PRIMARY)
+  // ---------------------------------------------------------
   try {
-    ai = getAI();
-  } catch (e: any) {
-    if (e.message === 'MISSING_API_KEY') {
-       // Re-throw specifically so callers can handle it gracefully
-       throw new Error("MISSING_API_KEY");
+    const ai = getAI();
+    for (const modelName of GOOGLE_CASCADE) {
+      try {
+        const response = await ai.models.generateContent({
+          ...params,
+          model: modelName,
+        });
+        
+        // Return normalized object matching what the app expects
+        return { text: response.text || "" };
+
+      } catch (error: any) {
+        // If it's a content blocked error, don't retry, just return empty
+        if (error.message?.includes("SAFETY")) throw error;
+        
+        console.warn(`Gemini ${modelName} failed.`, error.message);
+        lastError = error;
+        continue; 
+      }
     }
-    console.error("Gemini Client Init Failed:", e);
-    throw e;
+  } catch (e: any) {
+    if (e.message === 'MISSING_GOOGLE_KEY') lastError = e;
   }
 
-  for (const modelName of MODEL_CASCADE) {
+  // ---------------------------------------------------------
+  // 2. FALLBACK TO GROQ (LLAMA 3.2 VISION)
+  // ---------------------------------------------------------
+  console.warn("Gemini exhausted/failed. Switching to Groq fallback...");
+  
+  const groq = getGroq();
+  if (groq) {
     try {
-      const response = await ai.models.generateContent({
-        ...params,
-        model: modelName,
+      const messages = convertGeminiToGroq(params.contents);
+      
+      const completion = await groq.chat.completions.create({
+        messages: messages as any,
+        model: GROQ_MODEL,
+        temperature: 0.2,
+        max_tokens: 1024,
+        response_format: params.config?.responseMimeType === 'application/json' 
+          ? { type: "json_object" } 
+          : { type: "text" }
       });
-      return response;
-    } catch (error: any) {
-      console.warn(`Model ${modelName} failed.`, error.message);
-      lastError = error;
-      continue; 
+
+      const text = completion.choices[0]?.message?.content || "";
+      return { text };
+
+    } catch (groqError: any) {
+      console.error("Groq Fallback failed:", groqError);
+      // Keep the original Gemini error as the primary reason for failure if Groq also fails
     }
+  } else {
+    console.warn("Skipping Groq: No VITE_GROQ_API_KEY found.");
   }
-  console.error("All models in cascade failed.");
+
+  console.error("All AI models failed.");
   throw lastError || new Error("Model cascade exhausted.");
 };
 
@@ -138,20 +224,15 @@ export const instantImageCheck = async (base64Image: string): Promise<{
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
   } catch (e: any) {
-    if (e.message === "MISSING_API_KEY") {
+    if (e.message === "MISSING_GOOGLE_KEY") {
       console.warn("AI Security Scan Skipped: API Key missing.");
     } else {
       console.error("Instant check failed", e);
     }
-    // Fail safe: assume safe if AI fails, let manual review catch it
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
 };
 
-/**
- * Detects sensitive regions (Faces, ID Cards, Credit Cards) for redaction.
- * Returns bounding boxes in [ymin, xmin, ymax, xmax] format (0-1000 scale).
- */
 export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
@@ -191,9 +272,6 @@ export const detectRedactionRegions = async (base64Image: string): Promise<numbe
   }
 };
 
-/**
- * New Function: Extracts pure visual facts for autofill
- */
 export const extractVisualDetails = async (base64Image: string): Promise<{
   title: string;
   category: ItemCategory;
@@ -239,9 +317,6 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
   }
 };
 
-/**
- * New Function: Merges User Context with AI Visuals
- */
 export const mergeDescriptions = async (
   userContext: string, 
   visualData: any
@@ -317,7 +392,6 @@ export const analyzeItemDescription = async (
     const text = response.text ? cleanJSON(response.text) : "{}";
     const result = JSON.parse(text);
 
-    // Fallbacks if AI misses fields
     return {
       isViolating: result.isViolating || false,
       violationType: result.violationType || 'NONE',
@@ -332,12 +406,11 @@ export const analyzeItemDescription = async (
       faceStatus: 'NONE'
     };
   } catch (error: any) {
-    if (error.message === "MISSING_API_KEY") {
+    if (error.message === "MISSING_GOOGLE_KEY") {
         console.warn("AI Analysis Skipped: API Key missing.");
     } else {
         console.error("AI Analysis Error", error);
     }
-    // Return original data on error so user isn't blocked
     return { 
       isViolating: false,
       isPrank: false, 
@@ -363,7 +436,7 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
   } catch (e: any) {
-    if (e.message !== "MISSING_API_KEY") console.error(e);
+    if (e.message !== "MISSING_GOOGLE_KEY") console.error(e);
     return { userStatus: 'NONE', refinedQuery: query };
   }
 };
@@ -401,17 +474,10 @@ export const findPotentialMatches = async (
     const data = JSON.parse(text);
     return data.matches || [];
   } catch (e: any) {
-    if (e.message !== "MISSING_API_KEY") console.error("Match finding error", e);
+    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Match finding error", e);
     return [];
   }
 };
-
-export interface ComparisonResult {
-  confidence: number;
-  explanation: string;
-  similarities: string[];
-  differences: string[];
-}
 
 export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
   try {
@@ -436,7 +502,7 @@ export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promis
     const text = response.text ? cleanJSON(response.text) : "{}";
     return JSON.parse(text);
   } catch (e: any) {
-    if (e.message !== "MISSING_API_KEY") console.error("Comparison Error", e);
+    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Comparison Error", e);
     return { confidence: 0, explanation: "Comparison failed.", similarities: [], differences: [] };
   }
 };
