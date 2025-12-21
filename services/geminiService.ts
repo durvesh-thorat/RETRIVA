@@ -171,6 +171,8 @@ const generateWithCascade = async (
           : { type: "text" }
       });
 
+      console.info("%c✅ FALLBACK SUCCESS: Groq (Llama 3.2) generated response.", "color: #00ff00; font-weight: bold; font-size: 12px;");
+
       const text = completion.choices[0]?.message?.content || "";
       return { text };
 
