@@ -1,7 +1,5 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-// @ts-ignore
-import Groq from "groq-sdk";
 import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 
 export interface ComparisonResult {
@@ -48,15 +46,6 @@ const getAI = () => {
     throw new Error("MISSING_GOOGLE_KEY");
   }
   return new GoogleGenAI({ apiKey });
-};
-
-const getGroq = () => {
-  const apiKey = getApiKey('GROQ');
-  if (!apiKey) {
-    // Fail silently if no backup key provided, loop will just error out naturally
-    return null;
-  }
-  return new Groq({ apiKey, dangerouslyAllowBrowser: true });
 };
 
 // Model Cascade List: Primary (Google) -> Fallbacks
@@ -124,21 +113,47 @@ const convertGeminiToGroq = (contents: any) => {
 };
 
 /**
+ * Helper to call Groq API via Fetch (Removes SDK dependency to fix build)
+ */
+const callGroqAPI = async (messages: any[], jsonMode: boolean = false) => {
+  const apiKey = getApiKey('GROQ');
+  if (!apiKey) throw new Error("Missing Groq API Key");
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messages,
+      model: GROQ_MODEL,
+      temperature: 0.2,
+      max_tokens: 1024,
+      response_format: jsonMode ? { type: "json_object" } : { type: "text" }
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq API Error ${response.status}: ${errText}`);
+  }
+
+  return await response.json();
+};
+
+/**
  * DIAGNOSTIC TOOL: Test Groq Connection explicitly
  */
 export const testGroqConnection = async (): Promise<{ success: boolean; message: string }> => {
-  const groq = getGroq();
-  if (!groq) {
+  const apiKey = getApiKey('GROQ');
+  if (!apiKey) {
     return { success: false, message: "❌ Groq API Key (VITE_GROQ_API_KEY) is missing from environment variables." };
   }
 
   try {
     const start = Date.now();
-    await groq.chat.completions.create({
-      messages: [{ role: "user", content: "ping" }],
-      model: GROQ_MODEL,
-      max_tokens: 1,
-    });
+    await callGroqAPI([{ role: "user", content: "ping" }], false);
     const latency = Date.now() - start;
     return { success: true, message: `✅ Groq Connected! (Latency: ${latency}ms)` };
   } catch (e: any) {
@@ -213,20 +228,12 @@ const generateWithCascade = async (
   // ---------------------------------------------------------
   console.warn("Gemini exhausted/failed. Switching to Groq fallback...");
   
-  const groq = getGroq();
-  if (groq) {
+  if (getApiKey('GROQ')) {
     try {
       const messages = convertGeminiToGroq(params.contents);
+      const isJson = params.config?.responseMimeType === 'application/json';
       
-      const completion = await groq.chat.completions.create({
-        messages: messages as any,
-        model: GROQ_MODEL,
-        temperature: 0.2,
-        max_tokens: 1024,
-        response_format: params.config?.responseMimeType === 'application/json' 
-          ? { type: "json_object" } 
-          : { type: "text" }
-      });
+      const completion = await callGroqAPI(messages, isJson);
 
       console.info("%c✅ FALLBACK SUCCESS: Groq (Llama 3.2) generated response.", "color: #00ff00; font-weight: bold; font-size: 12px;");
 
