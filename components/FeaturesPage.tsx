@@ -1,9 +1,214 @@
-import React from 'react';
-import { ArrowLeft, ArrowRight, BrainCircuit, ShieldCheck, Zap, Database, Globe, Eye, Fingerprint, Lock, MessageCircle, ScanFace, Code2, Server, Cloud, Cpu, Sparkles, UserCircle2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, BrainCircuit, ShieldCheck, Zap, Database, Globe, Eye, Fingerprint, Lock, MessageCircle, ScanFace, Code2, Server, Cloud, Cpu, Sparkles, UserCircle2, ScanLine, FileJson, Search, AlertTriangle, CheckCircle2, Siren, Box } from 'lucide-react';
 
 interface FeaturesPageProps {
   onBack: () => void;
 }
+
+// --- ANIMATED DEMO COMPONENTS ---
+
+const VisionDemo = () => {
+  const [scanLine, setScanLine] = useState(0);
+  const [dataVisible, setDataVisible] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setScanLine(prev => (prev + 1) % 100);
+    }, 30);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (scanLine > 50) setDataVisible(true);
+    if (scanLine < 10) setDataVisible(false);
+  }, [scanLine]);
+
+  return (
+    <div className="relative w-full h-64 bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden flex shadow-2xl">
+       {/* Image Side */}
+       <div className="w-1/2 relative bg-slate-800 overflow-hidden">
+          <img 
+            src="https://images.unsplash.com/photo-1605518216938-7f31b709d043?q=80&w=800&auto=format&fit=crop" 
+            className="w-full h-full object-cover opacity-80" 
+            alt="Lost Bottle"
+          />
+          {/* Scanning Line */}
+          <div 
+            className="absolute left-0 right-0 h-1 bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.8)] z-10"
+            style={{ top: `${scanLine}%` }}
+          ></div>
+          <div className="absolute inset-0 bg-cyan-500/10 z-0" style={{ clipPath: `inset(0 0 ${100 - scanLine}% 0)` }}></div>
+          
+          {/* Bounding Boxes */}
+          <div className={`absolute top-[30%] left-[30%] w-[40%] h-[50%] border-2 border-cyan-500/50 rounded-lg transition-opacity duration-300 ${dataVisible ? 'opacity-100' : 'opacity-0'}`}>
+             <span className="absolute -top-5 left-0 text-[9px] bg-cyan-500 text-black font-bold px-1 rounded">CONFIDENCE: 99.8%</span>
+          </div>
+       </div>
+
+       {/* Data Side */}
+       <div className="w-1/2 p-4 font-mono text-[10px] text-cyan-400 bg-slate-950 overflow-hidden relative">
+          <div className="absolute top-2 right-2 flex gap-1">
+             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+             <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse delay-75"></div>
+             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse delay-150"></div>
+          </div>
+          <div className={`transition-all duration-500 ${dataVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+             <p className="text-slate-500 mb-2">// Gemini 3.0 Extraction</p>
+             <p><span className="text-purple-400">const</span> item = {'{'}</p>
+             <p className="pl-2">category: <span className="text-green-400">"Drinkware"</span>,</p>
+             <p className="pl-2">color: <span className="text-green-400">"Navy Blue"</span>,</p>
+             <p className="pl-2">brand: <span className="text-green-400">"Hydroflask"</span>,</p>
+             <p className="pl-2">condition: <span className="text-green-400">"Dented"</span>,</p>
+             <p className="pl-2">features: [</p>
+             <p className="pl-4"><span className="text-green-400">"Sticker on side"</span>,</p>
+             <p className="pl-4"><span className="text-green-400">"Metal cap"</span></p>
+             <p className="pl-2">]</p>
+             <p>{'};'}</p>
+          </div>
+       </div>
+    </div>
+  );
+};
+
+const MatchingDemo = () => {
+  const [score, setScore] = useState(0);
+  const [phase, setPhase] = useState<'scanning' | 'found'>('scanning');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+       if (phase === 'scanning') {
+          // Random fluctuation
+          setScore(Math.floor(Math.random() * 50));
+       } else {
+          // Count up to 98
+          setScore(prev => prev < 98 ? prev + 2 : 98);
+       }
+    }, 50);
+
+    const phaseTimer = setInterval(() => {
+       setPhase(prev => prev === 'scanning' ? 'found' : 'scanning');
+    }, 4000);
+
+    return () => { clearInterval(interval); clearInterval(phaseTimer); };
+  }, [phase]);
+
+  return (
+     <div className="relative w-full h-64 bg-slate-900 rounded-2xl border border-slate-800 p-6 flex items-center justify-between shadow-2xl overflow-hidden">
+        
+        {/* Background Grid */}
+        <div className="absolute inset-0 opacity-10 bg-[linear-gradient(rgba(255,255,255,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+
+        {/* Item A */}
+        <div className="relative z-10 w-24 h-32 bg-slate-800 rounded-xl border border-slate-700 p-3 flex flex-col items-center gap-2 shadow-lg group">
+           <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+              <Search className="w-6 h-6 text-orange-500" />
+           </div>
+           <div className="text-center">
+              <div className="text-[9px] text-slate-400 font-bold">QUERY</div>
+              <div className="text-[10px] text-white font-bold">Lost Keys</div>
+           </div>
+           {/* Vector Representation */}
+           <div className="absolute -right-4 top-1/2 w-4 h-[1px] bg-slate-700"></div>
+        </div>
+
+        {/* The Brain / Core */}
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4">
+           <div className={`text-4xl font-black tracking-tighter transition-all duration-300 ${phase === 'found' ? 'text-emerald-400 scale-110' : 'text-slate-600'}`}>
+              {score}%
+           </div>
+           <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2">
+              Semantic Similarity
+           </div>
+           {/* Connecting Lines */}
+           <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-slate-700 to-transparent mt-4 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-500 to-transparent animate-shimmer-fast"></div>
+           </div>
+        </div>
+
+        {/* Item B */}
+        <div className={`relative z-10 w-24 h-32 bg-slate-800 rounded-xl border p-3 flex flex-col items-center gap-2 shadow-lg transition-all duration-500 ${phase === 'found' ? 'border-emerald-500/50 shadow-emerald-500/20 scale-105' : 'border-slate-700 opacity-50'}`}>
+           <div className="w-12 h-12 rounded-full bg-teal-500/20 flex items-center justify-center">
+              <Box className="w-6 h-6 text-teal-500" />
+           </div>
+           <div className="text-center">
+              <div className="text-[9px] text-slate-400 font-bold">CANDIDATE</div>
+              <div className="text-[10px] text-white font-bold">Keychain</div>
+           </div>
+           {/* Match Badge */}
+           {phase === 'found' && (
+              <div className="absolute -top-3 -right-3 bg-emerald-500 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full animate-bounce">
+                 MATCH
+              </div>
+           )}
+        </div>
+
+     </div>
+  );
+};
+
+const SecurityDemo = () => {
+   const [status, setStatus] = useState<'scanning' | 'blurring' | 'safe'>('scanning');
+
+   useEffect(() => {
+      const timer = setInterval(() => {
+         setStatus(prev => {
+            if (prev === 'scanning') return 'blurring';
+            if (prev === 'blurring') return 'safe';
+            return 'scanning';
+         });
+      }, 2500);
+      return () => clearInterval(timer);
+   }, []);
+
+   return (
+      <div className="relative w-full h-64 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col items-center justify-center shadow-2xl overflow-hidden">
+         {/* ID Card Simulation */}
+         <div className="relative w-48 h-32 bg-slate-100 rounded-xl p-3 shadow-lg flex gap-3 overflow-hidden">
+             {/* Avatar Area - The sensitive part */}
+             <div className={`w-12 h-16 bg-slate-300 rounded-md transition-all duration-500 relative overflow-hidden ${status !== 'scanning' ? 'blur-md grayscale' : ''}`}>
+                 <div className="absolute top-2 left-2 w-2 h-2 bg-slate-400 rounded-full"></div>
+                 <div className="absolute bottom-0 left-1 right-1 h-6 bg-slate-400 rounded-t-lg"></div>
+                 {/* Redaction Overlay */}
+                 {status !== 'scanning' && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                       <Lock className="w-4 h-4 text-slate-800" />
+                    </div>
+                 )}
+             </div>
+             
+             {/* Text Lines */}
+             <div className="flex-1 space-y-2">
+                <div className="h-2 w-20 bg-slate-300 rounded"></div>
+                <div className="h-2 w-16 bg-slate-200 rounded"></div>
+                <div className={`h-2 w-24 bg-slate-300 rounded transition-all duration-500 ${status !== 'scanning' ? 'blur-[2px] opacity-50' : ''}`}></div>
+             </div>
+
+             {/* Scanner Bar */}
+             {status === 'scanning' && (
+               <div className="absolute top-0 left-0 right-0 h-full bg-gradient-to-b from-indigo-500/20 to-transparent animate-slide-up pointer-events-none border-b-2 border-indigo-500"></div>
+             )}
+         </div>
+
+         {/* Status Indicators */}
+         <div className="mt-6 flex gap-4">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${status === 'scanning' ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+               <ScanFace className={`w-3 h-3 ${status === 'scanning' ? 'animate-pulse' : ''}`} />
+               <span className="text-[10px] font-bold">SCANNING</span>
+            </div>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${status === 'blurring' ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+               <AlertTriangle className={`w-3 h-3 ${status === 'blurring' ? 'animate-bounce' : ''}`} />
+               <span className="text-[10px] font-bold">PII DETECTED</span>
+            </div>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${status === 'safe' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+               <CheckCircle2 className="w-3 h-3" />
+               <span className="text-[10px] font-bold">SAFE</span>
+            </div>
+         </div>
+      </div>
+   );
+};
+
+// --- MAIN PAGE ---
 
 const TechCard = ({ icon: Icon, title, desc, color }: { icon: any, title: string, desc: string, color: string }) => (
   <div className="group relative p-6 bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 transition-all duration-300">
@@ -18,43 +223,40 @@ const TechCard = ({ icon: Icon, title, desc, color }: { icon: any, title: string
   </div>
 );
 
-const FeatureSection = ({ align, title, subtitle, desc, icon: Icon, color, children }: { align: 'left' | 'right', title: string, subtitle: string, desc: string, icon: any, color: string, children?: React.ReactNode }) => (
+const FeatureSection = ({ align, title, subtitle, desc, icon: Icon, color, VisualComponent }: { align: 'left' | 'right', title: string, subtitle: string, desc: string, icon: any, color: string, VisualComponent: React.ComponentType }) => (
   <div className={`flex flex-col lg:flex-row items-center gap-12 lg:gap-20 py-20 ${align === 'right' ? 'lg:flex-row-reverse' : ''}`}>
-     <div className="flex-1 space-y-6">
+     <div className="flex-1 space-y-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-widest text-slate-300">
            <Icon className={`w-4 h-4 ${color}`} />
            <span>{subtitle}</span>
         </div>
-        <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight">
-           {title}
-        </h2>
-        <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-xl">
-           {desc}
-        </p>
-        <div className="pt-4">
-           {children}
+        
+        <div>
+           <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.1] mb-6">
+              {title}
+           </h2>
+           <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-xl">
+              {desc}
+           </p>
+        </div>
+
+        {/* Technical Callout */}
+        <div className="p-5 rounded-xl bg-white/5 border border-white/10 relative overflow-hidden group">
+           <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${color}`}></div>
+           <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Code2 className="w-3 h-3 text-slate-400" /> How it works
+           </h4>
+           <p className="text-xs text-slate-400 leading-relaxed font-mono">
+              The system utilizes <strong>Gemini 3.0 Multimodal embeddings</strong> to convert raw input into high-dimensional vectors. This allows us to perform cosine similarity searches across millions of data points in milliseconds.
+           </p>
         </div>
      </div>
-     <div className="flex-1 w-full">
-        <div className="relative aspect-square rounded-[2.5rem] bg-gradient-to-br from-white/5 to-transparent border border-white/10 overflow-hidden shadow-2xl p-8 flex items-center justify-center group">
-           <div className={`absolute inset-0 bg-gradient-to-tr ${color} opacity-5 group-hover:opacity-10 transition-opacity duration-500`}></div>
-           
-           {/* Abstract Visual Representation */}
-           <div className="relative w-full h-full flex items-center justify-center">
-              <div className="absolute inset-0 border border-white/5 rounded-3xl transform rotate-3 group-hover:rotate-6 transition-transform duration-700"></div>
-              <div className="absolute inset-0 border border-white/5 rounded-3xl transform -rotate-3 group-hover:-rotate-6 transition-transform duration-700"></div>
-              
-              <div className="relative z-10 text-center transform group-hover:scale-105 transition-transform duration-500">
-                  <div className={`w-32 h-32 mx-auto rounded-full bg-gradient-to-br ${color.replace('from-', 'from-').replace('to-', 'to-')} flex items-center justify-center shadow-[0_0_50px_rgba(0,0,0,0.5)] mb-6`}>
-                     <Icon className="w-16 h-16 text-white" />
-                  </div>
-                  <div className="space-y-2">
-                     <div className="h-2 w-32 bg-white/10 rounded-full mx-auto"></div>
-                     <div className="h-2 w-24 bg-white/10 rounded-full mx-auto"></div>
-                     <div className="h-2 w-40 bg-white/10 rounded-full mx-auto"></div>
-                  </div>
-              </div>
-           </div>
+
+     {/* Visual Side */}
+     <div className="flex-1 w-full relative group">
+        <div className={`absolute -inset-1 bg-gradient-to-r ${color} rounded-[2rem] opacity-20 blur-xl group-hover:opacity-40 transition-opacity duration-700`}></div>
+        <div className="relative rounded-[2rem] bg-slate-950 border border-slate-800 p-2 shadow-2xl">
+           <VisualComponent />
         </div>
      </div>
   </div>
@@ -92,191 +294,135 @@ const FeaturesPage: React.FC<FeaturesPageProps> = ({ onBack }) => {
           {/* Hero Section */}
           <header className="py-20 lg:py-32 text-center max-w-4xl mx-auto space-y-8 animate-in zoom-in-95 duration-700">
              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-black uppercase tracking-widest mb-4">
-                <Sparkles className="w-3.5 h-3.5" /> Powered by Gemini 1.5 Pro
+                <Sparkles className="w-3.5 h-3.5" /> Powered by Gemini 3.0 Flash
              </div>
              
              <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-[0.9]">
                 The Future of <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-400 animate-gradient-slow">Asset Recovery.</span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-400 animate-gradient-slow">Intelligent Recovery.</span>
              </h1>
              
              <p className="text-xl text-slate-400 font-medium leading-relaxed max-w-2xl mx-auto">
-                Retriva isn't just a lost and found board. It's an intelligent agent that sees, understands, and connects items across campus using advanced multimodal AI.
+                We replaced standard database queries with multimodal reasoning. Retriva doesn't just store items; it understands them.
              </p>
           </header>
 
-          {/* Tech Stack Grid (Bento) */}
+          {/* Core Tech Grid */}
           <section className="mb-32">
-             <div className="flex items-center gap-4 mb-8">
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10"></div>
-                <h2 className="text-sm font-black uppercase tracking-widest text-slate-500">Core Architecture</h2>
-                <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10"></div>
-             </div>
-             
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <TechCard 
                   icon={BrainCircuit}
-                  title="Google Gemini AI"
-                  desc="The brain of Retriva. Handles image recognition, semantic matching, and safety moderation."
+                  title="Gemini 3.0"
+                  desc="Latest multimodal reasoning model for Vision and Semantic tasks."
                   color="from-blue-600 to-cyan-600"
                 />
                 <TechCard 
                   icon={Database}
-                  title="Firebase"
-                  desc="Real-time NoSQL database ensuring instant chat delivery and live feed updates."
-                  color="from-yellow-600 to-orange-600"
+                  title="Vector Search"
+                  desc="High-dimensional embedding comparison for fuzzy matching."
+                  color="from-purple-600 to-pink-600"
                 />
                 <TechCard 
-                  icon={Code2}
-                  title="React & Tailwind"
-                  desc="Modern, responsive frontend with glassmorphism effects and smooth animations."
-                  color="from-indigo-600 to-purple-600"
+                  icon={ShieldCheck}
+                  title="Auto-Moderation"
+                  desc="Real-time scanning for PII, gore, and spam content."
+                  color="from-emerald-600 to-teal-600"
                 />
                 <TechCard 
                   icon={Cloud}
-                  title="Cloudinary"
-                  desc="Optimized media delivery network for fast image loading and transformation."
-                  color="from-emerald-600 to-teal-600"
+                  title="Real-time Sync"
+                  desc="Instant updates across all devices via Firebase Firestore."
+                  color="from-orange-600 to-red-600"
                 />
              </div>
           </section>
 
-          {/* Deep Dives */}
-          <div className="space-y-12">
+          {/* DEEP DIVES WITH ANIMATIONS */}
+          <div className="space-y-24 border-t border-white/5 pt-20">
              
-             {/* Feature 1: Vision AI */}
+             {/* Feature 1: Vision Ingestion */}
              <FeatureSection 
                align="left"
-               title="It sees what you see."
-               subtitle="Multimodal Vision"
-               desc="Upload a photo, and our integration with Gemini 1.5 Flash instantly analyzes it. It doesn't just see 'a bottle'. It sees 'a blue Hydroflask with a cat sticker'. This structured data extraction powers our search engine."
+               title="Pixel-to-Data Conversion."
+               subtitle="Vision Intelligence"
+               desc="When you snap a photo, Gemini 3.0 doesn't just see pixels. It extracts structured data: precise color codes, brand recognition, material analysis, and damage assessment. This turns a raw image into a searchable database entry automatically."
                icon={Eye}
-               color="from-indigo-500 to-blue-600"
-             >
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                      <div className="text-indigo-400 font-black text-xl mb-1">0.5s</div>
-                      <div className="text-xs text-slate-400 font-bold uppercase">Analysis Speed</div>
-                   </div>
-                   <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                      <div className="text-indigo-400 font-black text-xl mb-1">99%</div>
-                      <div className="text-xs text-slate-400 font-bold uppercase">Tag Accuracy</div>
-                   </div>
-                </div>
-             </FeatureSection>
+               color="from-cyan-500 to-blue-600"
+               VisualComponent={VisionDemo}
+             />
 
-             {/* Feature 2: Match Center */}
+             {/* Feature 2: Semantic Matching */}
              <FeatureSection 
                align="right"
-               title="Semantic Matching."
-               subtitle="AI Comparator"
-               desc="Forget keyword searching. Retriva compares the 'meaning' and 'visual features' of items. Our Match Center calculates a confidence score (0-100%) between two items and explains WHY they match or differ."
+               title="It matches meaning, not just keywords."
+               subtitle="Semantic Engine"
+               desc="Traditional search fails when a user types 'Phone' but the item is listed as 'iPhone 14'. Our Semantic Match Engine calculates vector similarity. It knows that 'Keys' and 'Keychain' are contextually related, even if the words don't match exactly."
                icon={Fingerprint}
-               color="from-purple-500 to-pink-600"
-             >
-                 <ul className="space-y-3">
-                    <li className="flex items-center gap-3 text-slate-300 font-medium">
-                       <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> Vector Similarity Search
-                    </li>
-                    <li className="flex items-center gap-3 text-slate-300 font-medium">
-                       <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> Visual Feature Extraction
-                    </li>
-                    <li className="flex items-center gap-3 text-slate-300 font-medium">
-                       <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div> Temporal & Location logic
-                    </li>
-                 </ul>
-             </FeatureSection>
+               color="from-indigo-500 to-purple-600"
+               VisualComponent={MatchingDemo}
+             />
 
-             {/* Feature 3: Safety */}
+             {/* Feature 3: Security */}
              <FeatureSection 
                align="left"
-               title="Safe by Design."
-               subtitle="Moderation & Privacy"
-               desc="Every image uploaded is scanned for policy violations (gore, nudity, spam). Sensitive information on ID cards is automatically flagged. We ensure the platform remains useful and professional."
+               title="Privacy is not optional."
+               subtitle="The Guardian AI"
+               desc="Campus lost & founds are full of sensitive items like Student IDs and Credit Cards. Our Guardian AI scans every upload in real-time. If it detects PII, it automatically blurs the sensitive regions before the image is public."
                icon={ShieldCheck}
                color="from-emerald-500 to-teal-600"
+               VisualComponent={SecurityDemo}
              />
+
+             {/* Feature 4: Proactive Scan (Text Only for balance) */}
+             <div className="flex flex-col items-center text-center py-20 bg-gradient-to-b from-white/5 to-transparent rounded-[3rem] border border-white/10 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                
+                <div className="p-4 bg-indigo-500/20 rounded-full mb-6 animate-pulse-soft">
+                   <Siren className="w-8 h-8 text-indigo-400" />
+                </div>
+                
+                <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Proactive Scan & Alert</h2>
+                <p className="text-slate-400 max-w-2xl mx-auto text-lg leading-relaxed mb-8">
+                   You don't need to check the app every hour. Our backend runs a <strong>Cron Job</strong> that periodically cross-references your lost item report against all new incoming found items. If a potential match (Confidence > 85%) is found, we send you a push notification instantly.
+                </p>
+
+                <div className="flex flex-wrap justify-center gap-4">
+                   <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 text-xs font-mono text-purple-400">
+                      Background Process
+                   </div>
+                   <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 text-xs font-mono text-purple-400">
+                      Push Notifications
+                   </div>
+                   <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 text-xs font-mono text-purple-400">
+                      RAG Pipeline
+                   </div>
+                </div>
+             </div>
 
           </div>
 
-          {/* Why Choose Retriva */}
-          <section className="mt-32 py-20 border-y border-white/5 relative overflow-hidden">
-             <div className="absolute inset-0 bg-indigo-900/5"></div>
-             <div className="relative z-10 text-center mb-16">
-                <h2 className="text-4xl font-black text-white mb-4">Why Retriva?</h2>
-                <p className="text-slate-400 max-w-xl mx-auto">Designed to solve the specific pain points of campus lost and found systems.</p>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
-                <div className="text-center space-y-4 p-6">
-                   <div className="w-16 h-16 mx-auto bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
-                      <Zap className="w-8 h-8 text-yellow-400" />
-                   </div>
-                   <h3 className="text-xl font-bold text-white">Instant</h3>
-                   <p className="text-sm text-slate-400 leading-relaxed">No more waiting for admin approval. Post in seconds, match in minutes.</p>
-                </div>
-                <div className="text-center space-y-4 p-6">
-                   <div className="w-16 h-16 mx-auto bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
-                      <Lock className="w-8 h-8 text-emerald-400" />
-                   </div>
-                   <h3 className="text-xl font-bold text-white">Private</h3>
-                   <p className="text-sm text-slate-400 leading-relaxed">Chat anonymously. Your phone number is never exposed to strangers.</p>
-                </div>
-                <div className="text-center space-y-4 p-6">
-                   <div className="w-16 h-16 mx-auto bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
-                      <Globe className="w-8 h-8 text-indigo-400" />
-                   </div>
-                   <h3 className="text-xl font-bold text-white">Community</h3>
-                   <p className="text-sm text-slate-400 leading-relaxed">A global feed keeps everyone aware of what's happening on campus.</p>
-                </div>
-             </div>
-          </section>
-
           {/* Team Section */}
-          <section className="mt-32 text-center">
-             <h2 className="text-4xl font-black text-white mb-16">The Team</h2>
+          <section className="mt-32 pt-20 border-t border-white/5">
+             <div className="text-center mb-16">
+               <h2 className="text-4xl font-black text-white mb-4">The Team</h2>
+               <p className="text-slate-400">The minds behind the machine.</p>
+             </div>
+             
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                
-                {/* Team Member 1 */}
-                <div className="group relative bg-white/5 border border-white/10 rounded-3xl p-6 hover:-translate-y-2 transition-transform duration-300">
-                   <div className="w-24 h-24 mx-auto bg-indigo-500/20 rounded-full mb-4 flex items-center justify-center group-hover:bg-indigo-500 transition-colors">
-                      <UserCircle2 className="w-12 h-12 text-indigo-300 group-hover:text-white" />
-                   </div>
-                   <h3 className="text-lg font-bold text-white">Member Name</h3>
-                   <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-4">Frontend Engineer</p>
-                   <p className="text-sm text-slate-400">Crafting intuitive and responsive user interfaces.</p>
-                </div>
-
-                {/* Team Member 2 */}
-                <div className="group relative bg-white/5 border border-white/10 rounded-3xl p-6 hover:-translate-y-2 transition-transform duration-300">
-                   <div className="w-24 h-24 mx-auto bg-purple-500/20 rounded-full mb-4 flex items-center justify-center group-hover:bg-purple-500 transition-colors">
-                      <Code2 className="w-12 h-12 text-purple-300 group-hover:text-white" />
-                   </div>
-                   <h3 className="text-lg font-bold text-white">Member Name</h3>
-                   <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4">AI Specialist</p>
-                   <p className="text-sm text-slate-400">Integrating Gemini API for intelligent processing.</p>
-                </div>
-
-                {/* Team Member 3 */}
-                <div className="group relative bg-white/5 border border-white/10 rounded-3xl p-6 hover:-translate-y-2 transition-transform duration-300">
-                   <div className="w-24 h-24 mx-auto bg-emerald-500/20 rounded-full mb-4 flex items-center justify-center group-hover:bg-emerald-500 transition-colors">
-                      <Server className="w-12 h-12 text-emerald-300 group-hover:text-white" />
-                   </div>
-                   <h3 className="text-lg font-bold text-white">Member Name</h3>
-                   <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-4">Backend Developer</p>
-                   <p className="text-sm text-slate-400">Managing Firebase infrastructure and security.</p>
-                </div>
-
-                {/* Team Member 4 */}
-                <div className="group relative bg-white/5 border border-white/10 rounded-3xl p-6 hover:-translate-y-2 transition-transform duration-300">
-                   <div className="w-24 h-24 mx-auto bg-orange-500/20 rounded-full mb-4 flex items-center justify-center group-hover:bg-orange-500 transition-colors">
-                      <Cpu className="w-12 h-12 text-orange-300 group-hover:text-white" />
-                   </div>
-                   <h3 className="text-lg font-bold text-white">Member Name</h3>
-                   <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-4">Product Designer</p>
-                   <p className="text-sm text-slate-400">Ensuring a seamless and aesthetic user experience.</p>
-                </div>
-
+                {[
+                   { name: "Teammate 1", role: "Full Stack Engineer", icon: Code2, color: "indigo" },
+                   { name: "Teammate 2", role: "AI Specialist", icon: BrainCircuit, color: "purple" },
+                   { name: "Teammate 3", role: "Product Designer", icon: Sparkles, color: "pink" },
+                   { name: "Teammate 4", role: "Backend Architect", icon: Server, color: "emerald" },
+                ].map((member, i) => (
+                  <div key={i} className="group relative bg-white/5 border border-white/10 rounded-3xl p-8 hover:-translate-y-2 transition-transform duration-300">
+                     <div className={`w-20 h-20 mx-auto bg-${member.color}-500/20 rounded-full mb-6 flex items-center justify-center group-hover:bg-${member.color}-500 transition-colors`}>
+                        <member.icon className={`w-10 h-10 text-${member.color}-300 group-hover:text-white`} />
+                     </div>
+                     <h3 className="text-xl font-bold text-white mb-1">{member.name}</h3>
+                     <p className={`text-xs font-bold text-${member.color}-400 uppercase tracking-widest`}>{member.role}</p>
+                  </div>
+                ))}
              </div>
           </section>
 
@@ -284,9 +430,9 @@ const FeaturesPage: React.FC<FeaturesPageProps> = ({ onBack }) => {
           <div className="mt-32 text-center">
              <button 
                onClick={onBack}
-               className="inline-flex items-center gap-3 px-8 py-4 bg-white text-slate-900 rounded-full font-black text-lg hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all"
+               className="inline-flex items-center gap-3 px-10 py-5 bg-white text-slate-900 rounded-full font-black text-xl hover:scale-105 hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all"
              >
-                Start Using Retriva <ArrowRight className="w-5 h-5" />
+                Start Using Retriva <ArrowRight className="w-6 h-6" />
              </button>
           </div>
 
