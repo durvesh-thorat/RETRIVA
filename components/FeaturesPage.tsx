@@ -16,7 +16,8 @@ const LogoGemini = ({ className }: { className?: string }) => (
 
 const LogoFirebase = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-    <path d="M4.63 2.53L1.58 13.06a1.27 1.27 0 00.35 1.34l7.98 7.37c.75.69 1.9.69 2.65 0l7.35-6.79.03-.03 2.45-9.15a.65.65 0 00-.97-.68L14.7 9.87l-2.73-5.46a.71.71 0 00-1.31.06L7.15 13.6 4.63 2.53z" />
+    <path d="M3.52 18.25h16.96l-7.35-13.6-2.28 4.29-1.39-2.7L3.52 18.25z" opacity="0.5"/>
+    <path d="M14.7 9.87l-2.73-5.46a.71.71 0 00-1.31.06L7.15 13.6 4.63 2.53a.92.92 0 00-1.66.4l3.18 17.51a1.9 1.9 0 001.91 1.56h7.82a1.9 1.9 0 001.91-1.56L21.03 2.93a.92.92 0 00-1.66-.4l-4.67 8.34z" />
   </svg>
 );
 
@@ -29,7 +30,8 @@ const LogoCloudinary = ({ className }: { className?: string }) => (
 
 const LogoAIStudio = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-    <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5 10 5 10-5-5-2.5-5 2.5z"/>
+    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-3-6 3-6 3 6-3 6z"/>
+    <path d="M5 5h14v14H5V5z" fillOpacity="0.1"/>
   </svg>
 );
 
@@ -56,7 +58,7 @@ const VisionDemo = () => {
        {/* Image Side */}
        <div className="w-1/2 relative bg-slate-800 overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1544003427-44026dc6a070?q=80&w=800&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1517260739337-6799d239ce83?q=80&w=800&auto=format&fit=crop" 
             className="w-full h-full object-cover opacity-80" 
             alt="Blue Bottle"
           />
@@ -84,12 +86,12 @@ const VisionDemo = () => {
              <p className="text-slate-500 mb-2">// Gemini 3.0 Extraction</p>
              <p><span className="text-purple-400">const</span> item = {'{'}</p>
              <p className="pl-2">category: <span className="text-green-400">"Drinkware"</span>,</p>
-             <p className="pl-2">color: <span className="text-green-400">"Navy Blue"</span>,</p>
+             <p className="pl-2">color: <span className="text-green-400">"Light Blue"</span>,</p>
              <p className="pl-2">brand: <span className="text-green-400">"Hydroflask"</span>,</p>
-             <p className="pl-2">condition: <span className="text-green-400">"Dented"</span>,</p>
+             <p className="pl-2">condition: <span className="text-green-400">"Good"</span>,</p>
              <p className="pl-2">features: [</p>
-             <p className="pl-4"><span className="text-green-400">"Sticker on side"</span>,</p>
-             <p className="pl-4"><span className="text-green-400">"Metal cap"</span></p>
+             <p className="pl-4"><span className="text-green-400">"Handle strap"</span>,</p>
+             <p className="pl-4"><span className="text-green-400">"Wide mouth"</span></p>
              <p className="pl-2">]</p>
              <p>{'};'}</p>
           </div>

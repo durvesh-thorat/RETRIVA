@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ItemReport, ReportType, ItemCategory, User } from '../types';
-import { analyzeItemDescription, instantImageCheck, extractVisualDetails, mergeDescriptions } from '../services/geminiService';
+import { analyzeItemDescription, instantImageCheck, extractVisualDetails, mergeDescriptions, detectRedactionRegions } from '../services/geminiService';
 import { uploadImage } from '../services/cloudinary';
-import { Loader2, MapPin, X, Check, Sparkles, Box, SearchX, ShieldBan, UploadCloud, AlertCircle, Wand2, Info, LayoutTemplate, Palette, Tag } from 'lucide-react';
+import { Loader2, MapPin, X, Check, Sparkles, Box, SearchX, ShieldBan, UploadCloud, AlertCircle, Wand2, Info, LayoutTemplate, Palette, Tag, EyeOff } from 'lucide-react';
 
 interface ReportFormProps {
   type: ReportType;
@@ -24,7 +24,7 @@ type AIFeedback = {
 interface ImageStatus {
   url: string; // Base64 for preview, or Cloudinary URL for existing
   file?: File; // Raw file to upload
-  status: 'checking' | 'valid' | 'prank' | 'caution';
+  status: 'checking' | 'valid' | 'prank' | 'caution' | 'redacted';
   reason?: string;
 }
 
@@ -56,6 +56,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
   // AI State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isAutofilling, setIsAutofilling] = useState(false);
+  const [isRedacting, setIsRedacting] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [isVerifyingFinal, setIsVerifyingFinal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,7 +68,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null); 
 
-  const isProcessing = isAnalyzing || isVerifyingFinal || isSubmitting || isAutofilling || isMerging;
+  const isProcessing = isAnalyzing || isVerifyingFinal || isSubmitting || isAutofilling || isMerging || isRedacting;
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -92,21 +93,97 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
     return dateStr;
   }
 
-  // 1. Image Check & Autofill Trigger
+  // Helper to blur regions on canvas
+  const blurImageRegions = (base64Str: string, regions: number[][]): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(base64Str); return; }
+
+        // Draw original
+        ctx.drawImage(img, 0, 0);
+
+        // Apply blur to regions
+        regions.forEach(region => {
+          const [ymin, xmin, ymax, xmax] = region;
+          const y = (ymin / 1000) * img.height;
+          const x = (xmin / 1000) * img.width;
+          const h = ((ymax - ymin) / 1000) * img.height;
+          const w = ((xmax - xmin) / 1000) * img.width;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x, y, w, h);
+          ctx.clip();
+          ctx.filter = 'blur(20px)';
+          ctx.drawImage(img, 0, 0);
+          ctx.restore();
+
+          // Overlay badge
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.fillRect(x, y, w, h);
+        });
+
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.src = base64Str;
+    });
+  };
+
+  // 1. Image Check, Redaction & Autofill Trigger
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && !isProcessing) {
       setFormError(null);
-      const file = files[0]; // Process primary image for autofill
+      const file = files[0];
       
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64 = reader.result as string;
+        let base64 = reader.result as string;
         
-        // Optimistic UI update: Store base64 for preview, FILE for upload
+        // Optimistic UI update: Store base64 for preview
         setImageStatuses(prev => [...prev, { url: base64, file: file, status: 'checking' }]);
         
-        // A. Security Check (Uses Base64)
+        // A. Redaction Check (Documents/Faces/PII)
+        setIsRedacting(true);
+        let wasRedacted = false;
+        try {
+          const regions = await detectRedactionRegions(base64);
+          if (regions.length > 0) {
+            // Apply Redaction
+            const redactedBase64 = await blurImageRegions(base64, regions);
+            base64 = redactedBase64;
+            
+            // Convert back to File for upload
+            const res = await fetch(redactedBase64);
+            const blob = await res.blob();
+            const redactedFile = new File([blob], file.name, { type: 'image/jpeg' });
+            
+            // Update state with Redacted Image
+            setImageStatuses(prev => {
+              const newState = [...prev];
+              // Replace the last added item (current)
+              newState[newState.length - 1] = { 
+                url: redactedBase64, 
+                file: redactedFile, 
+                status: 'redacted' 
+              };
+              return newState;
+            });
+            wasRedacted = true;
+            setAiFeedback({ severity: 'SUCCESS', type: 'REDACTION', message: "Sensitive details auto-blurred for privacy.", actionLabel: 'Ok', onAction: () => setAiFeedback(null) });
+          }
+        } catch (e) {
+          console.error("Redaction error", e);
+        } finally {
+          setIsRedacting(false);
+        }
+
+        // B. Security Check (If not redacted already, or check redacted version)
         const security = await instantImageCheck(base64);
         if (security.violationType !== 'NONE') {
            setImageStatuses(prev => prev.map(s => s.url === base64 ? { ...s, status: 'prank' } : s));
@@ -114,9 +191,11 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
            return;
         }
 
-        setImageStatuses(prev => prev.map(s => s.url === base64 ? { ...s, status: 'valid' } : s));
+        if (!wasRedacted) {
+           setImageStatuses(prev => prev.map(s => s.url === base64 ? { ...s, status: 'valid' } : s));
+        }
 
-        // B. Autofill (Only if it's the first image)
+        // C. Autofill (Only if it's the first image)
         if (imageStatuses.length === 0) {
            setIsAutofilling(true);
            try {
@@ -179,8 +258,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
     setIsVerifyingFinal(true);
 
     try {
-      // For AI check, we use the preview URLs (which are Base64 for new images)
-      // If editing and URL is http, AI check might skip visual part, which is acceptable
+      // For AI check, we use the preview URLs
       const finalCheck = await analyzeItemDescription(description, imageStatuses.map(s => s.url), title);
       
       if (finalCheck.isViolating || finalCheck.isPrank) {
@@ -190,13 +268,12 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
 
       setIsSubmitting(true);
       
-      // UPLOAD TO CLOUDINARY HERE
-      // We map over statuses: if there is a 'file' property, upload it. If not, keep the existing 'url'.
+      // UPLOAD TO CLOUDINARY
       const validImages = imageStatuses.filter(s => s.status !== 'prank');
       
       const uploadPromises = validImages.map(async (img) => {
         if (img.file) {
-          // It's a new image, upload raw file
+          // It's a new (or redacted) image, upload raw file
           return await uploadImage(img.file);
         }
         // It's an existing image (edit mode), keep URL
@@ -251,6 +328,17 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
         </div>
       )}
 
+      {/* Success/Info Overlay */}
+      {aiFeedback?.severity === 'SUCCESS' && (
+         <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top-4 fade-in">
+            <div className="bg-emerald-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
+               <EyeOff className="w-5 h-5" />
+               <span className="font-bold text-sm">{aiFeedback.message}</span>
+               <button onClick={() => setAiFeedback(null)} className="ml-2 bg-white/20 hover:bg-white/30 rounded-full p-1"><X className="w-3 h-3" /></button>
+            </div>
+         </div>
+      )}
+
       <div className="relative w-full max-w-6xl h-[100dvh] sm:h-auto sm:max-h-[90vh] bg-white dark:bg-slate-900 rounded-none sm:rounded-[2rem] shadow-2xl flex flex-col border-0 sm:border border-slate-200 dark:border-slate-800 overflow-hidden">
         
         {/* Loading Overlay */}
@@ -258,7 +346,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
            <div className="absolute inset-0 z-[70] bg-white/80 dark:bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center">
              <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
              <p className="font-bold text-slate-900 dark:text-white animate-pulse">
-               {isSubmitting ? "Uploading & Submitting..." : isAutofilling ? "Extracting Details..." : isMerging ? "Merging Descriptions..." : "Verifying..."}
+               {isSubmitting ? "Uploading & Submitting..." : isAutofilling ? "Extracting Details..." : isRedacting ? "Scanning for Sensitive Info..." : isMerging ? "Merging Descriptions..." : "Verifying..."}
              </p>
            </div>
         )}
@@ -366,9 +454,16 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
 
                     <div className="grid grid-cols-4 gap-3">
                        {imageStatuses.map((s, i) => (
-                          <div key={i} className="aspect-square relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-                             <img src={s.url} className="w-full h-full object-cover" />
+                          <div key={i} className="aspect-square relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
+                             <img src={s.url} className={`w-full h-full object-cover ${s.status === 'redacted' ? 'blur-[1px]' : ''}`} />
+                             
                              {s.status === 'checking' && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 className="w-5 h-5 text-white animate-spin" /></div>}
+                             {s.status === 'redacted' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+                                    <EyeOff className="w-6 h-6 text-white/80" />
+                                </div>
+                             )}
+                             
                              <button type="button" onClick={() => removeImage(i)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5"><X className="w-3 h-3" /></button>
                           </div>
                        ))}
@@ -380,6 +475,11 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
                        )}
                     </div>
                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+                    
+                    <p className="mt-3 text-[10px] text-slate-400 flex items-center gap-1.5">
+                       <Info className="w-3 h-3" /> 
+                       Photos with faces or ID cards will be auto-blurred.
+                    </p>
                  </div>
 
                  {/* 2. AI & Description Center */}

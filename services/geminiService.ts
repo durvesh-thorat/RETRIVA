@@ -149,6 +149,49 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 };
 
 /**
+ * Detects sensitive regions (Faces, ID Cards, Credit Cards) for redaction.
+ * Returns bounding boxes in [ymin, xmin, ymax, xmax] format (0-1000 scale).
+ */
+export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
+  try {
+    const base64Data = base64Image.split(',')[1] || base64Image;
+    const response = await generateWithCascade({
+      contents: {
+        parts: [
+          { text: `
+            Analyze this image for privacy protection.
+            Identify bounding boxes for:
+            1. Human Faces
+            2. Identity Documents (Driver Licenses, Student IDs, Passports)
+            3. Credit/Debit Cards
+            4. Papers containing visible PII (names, phone numbers, addresses)
+
+            Return strictly JSON:
+            {
+              "regions": [
+                 [ymin, xmin, ymax, xmax], // 0 to 1000 scale integers
+                 ...
+              ]
+            }
+            If no sensitive content, return { "regions": [] }.
+            Use 1000 as the scale (e.g. 500 = 50%).
+          ` },
+          { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+        ]
+      },
+      config: { responseMimeType: "application/json" }
+    });
+
+    const text = response.text ? cleanJSON(response.text) : "{}";
+    const data = JSON.parse(text);
+    return data.regions || [];
+  } catch (e) {
+    console.error("Redaction check failed", e);
+    return [];
+  }
+};
+
+/**
  * New Function: Extracts pure visual facts for autofill
  */
 export const extractVisualDetails = async (base64Image: string): Promise<{
