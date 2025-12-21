@@ -47,11 +47,12 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Model Cascade List: Primary (Google) -> Fallbacks
+// Model Cascade List: Fastest -> Most Capable
+// We prioritize Flash models for speed. If they 429, we instantly switch.
 const GOOGLE_CASCADE = [
-  'gemini-3-flash-preview',
-  'gemini-flash-latest',
   'gemini-flash-lite-latest',
+  'gemini-flash-latest',
+  'gemini-3-flash-preview',
   'gemini-3-pro-preview'
 ];
 
@@ -82,8 +83,6 @@ const cleanJSON = (text: string): string => {
 
 /**
  * ADAPTER: Converts Gemini Input Format to Groq (OpenAI-compat) Format
- * NOTE: Since we are using a Text-Only fallback logic for stability, we must convert/strip images to text notes.
- * If the new model supports vision, this can be updated to send image_url payloads.
  */
 const convertGeminiToGroq = (contents: any) => {
   const parts = contents.parts || [];
@@ -107,7 +106,7 @@ const convertGeminiToGroq = (contents: any) => {
 };
 
 /**
- * Helper to call Groq API via Fetch (Removes SDK dependency to fix build)
+ * Helper to call Groq API via Fetch
  */
 const callGroqAPI = async (messages: any[], jsonMode: boolean = false) => {
   const apiKey = getApiKey('GROQ');
@@ -147,51 +146,23 @@ const generateWithCascade = async (
   try {
     const ai = getAI();
     
+    // Iterate through models. If one fails, IMMEDIATELY switch to the next.
+    // No retries per model to avoid latency.
     for (const modelName of GOOGLE_CASCADE) {
-      // Retry Logic for Rate Limits
-      let attempts = 0;
-      const MAX_ATTEMPTS = 3;
-
-      while (attempts < MAX_ATTEMPTS) {
         try {
           const response = await ai.models.generateContent({
             ...params,
             model: modelName,
           });
           
-          // Return normalized object matching what the app expects
           return { text: response.text || "" };
 
         } catch (error: any) {
-          // If it's a content blocked error, don't retry, just return empty
-          if (error.message?.includes("SAFETY")) throw error;
-          
-          const isRateLimit = error.message?.includes("429") || error.status === 429 || error.message?.includes("quota") || error.message?.includes("RESOURCE_EXHAUSTED");
-          
-          if (isRateLimit) {
-             attempts++;
-             console.warn(`Gemini ${modelName} Rate Limited (429). Attempt ${attempts}/${MAX_ATTEMPTS}.`);
-             
-             // If we haven't exhausted retries, wait and continue loop
-             if (attempts < MAX_ATTEMPTS) {
-                // Exponential Backoff: 2s, 4s, 8s
-                const waitTime = 2000 * Math.pow(2, attempts - 1);
-                await sleep(waitTime);
-                continue; 
-             }
-             
-             // If retries exhausted for this model, we break the inner loop 
-             // and let the outer loop try the next model in the cascade
-             lastError = error;
-             break;
-          } else {
-             // Non-rate limit error (e.g. 500, 400), try next model immediately
-             console.warn(`Gemini ${modelName} failed.`, error.message);
-             lastError = error;
-             break; 
-          }
+          // Log warning but don't stop execution, proceed to next model in loop
+          console.warn(`Gemini ${modelName} failed/rate-limited. Switching to next model immediately.`);
+          lastError = error;
+          continue; 
         }
-      }
     }
   } catch (e: any) {
     if (e.message === 'MISSING_GOOGLE_KEY') lastError = e;
@@ -200,7 +171,7 @@ const generateWithCascade = async (
   // ---------------------------------------------------------
   // 2. FALLBACK TO GROQ
   // ---------------------------------------------------------
-  console.warn("Gemini exhausted/failed. Switching to Groq fallback...");
+  console.warn("All Gemini models exhausted. Switching to Groq fallback...");
   
   if (getApiKey('GROQ')) {
     try {
@@ -210,15 +181,11 @@ const generateWithCascade = async (
       const completion = await callGroqAPI(messages, isJson);
 
       console.info("Fallback Success: Groq generated response.");
-
-      // NOTE: Removed Toast Notification dispatch as requested to avoid UI interruption
-
       const text = completion.choices[0]?.message?.content || "";
       return { text };
 
     } catch (groqError: any) {
       console.error("Groq Fallback failed:", groqError);
-      // Keep the original Gemini error as the primary reason for failure if Groq also fails
     }
   } else {
     console.warn("Skipping Groq: No VITE_GROQ_API_KEY found.");
