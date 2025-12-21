@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
-import { User as UserIcon, Mail, Building, Save, Camera, ArrowLeft, Loader2, Trash2, Edit3, AlertTriangle } from 'lucide-react';
+import { User as UserIcon, Mail, Building, Save, Camera, ArrowLeft, Loader2, Trash2, Edit3, AlertTriangle, LogOut } from 'lucide-react';
 import { db, auth } from '../services/firebase';
 import { updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
@@ -12,9 +12,10 @@ interface ProfileProps {
   onUpdate: (updatedUser: User) => void;
   onBack: () => void;
   onDeleteAccount: () => void;
+  onLogout: () => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccount }) => {
+const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccount, onLogout }) => {
   const [name, setName] = useState(user.name);
   const [department, setDepartment] = useState(user.department || '');
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -170,22 +171,40 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccou
 
            </form>
            
-           {/* Danger Zone */}
-           <div className="mt-12 pt-8 border-t border-red-100 dark:border-red-900/30">
-               <h3 className="text-xs font-black text-red-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                   <AlertTriangle className="w-4 h-4" /> Danger Zone
+           {/* Account Actions */}
+           <div className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800">
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                   <AlertTriangle className="w-4 h-4" /> Account Actions
                </h3>
-               <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
-                   <div>
-                       <h4 className="font-bold text-slate-900 dark:text-red-200 text-sm">Delete Account</h4>
-                       <p className="text-xs text-slate-500 dark:text-red-400/70 mt-0.5">Permanently remove your profile, reports, and messages.</p>
-                   </div>
-                   <button 
-                    onClick={onDeleteAccount}
-                    className="px-4 py-2 bg-white dark:bg-red-900/30 text-red-600 dark:text-red-300 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white transition-colors shadow-sm"
-                   >
-                       Delete
-                   </button>
+               
+               <div className="space-y-4">
+                  {/* Logout Row */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800">
+                     <div>
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm">Sign Out</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Securely log out of your account on this device.</p>
+                     </div>
+                     <button 
+                       onClick={onLogout}
+                       className="px-5 py-2.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2"
+                     >
+                        <LogOut className="w-4 h-4" /> Sign Out
+                     </button>
+                  </div>
+
+                  {/* Delete Account Row */}
+                  <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
+                      <div>
+                          <h4 className="font-bold text-red-900 dark:text-red-200 text-sm">Delete Account</h4>
+                          <p className="text-xs text-red-700/70 dark:text-red-300/60 mt-0.5">Permanently remove your profile and data.</p>
+                      </div>
+                      <button 
+                        onClick={onDeleteAccount}
+                        className="px-5 py-2.5 bg-white/50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                      >
+                          Delete
+                      </button>
+                  </div>
                </div>
            </div>
         </div>

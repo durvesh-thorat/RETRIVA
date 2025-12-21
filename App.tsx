@@ -9,7 +9,7 @@ import Toast from './components/Toast';
 import NotificationCenter from './components/NotificationCenter';
 import MatchComparator from './components/MatchComparator';
 import { User, ViewState, ItemReport, ReportType, ItemCategory, AppNotification, Chat, Message } from './types';
-import { MessageCircle, Bell, Moon, Sun, LogOut, User as UserIcon, Plus, SearchX, Box, X, Sparkles, Loader2 } from 'lucide-react';
+import { MessageCircle, Bell, Moon, Sun, User as UserIcon, Plus, SearchX, Box, Loader2 } from 'lucide-react';
 
 // FIREBASE IMPORTS
 import { auth, db } from './services/firebase';
@@ -24,7 +24,12 @@ const App: React.FC = () => {
   const [reports, setReports] = useState<ItemReport[]>([]);
   const [editingReport, setEditingReport] = useState<ItemReport | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'info' | 'alert'} | null>(null);
-  const [darkMode, setDarkMode] = useState(false);
+  
+  // Persistent Dark Mode
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('retriva_theme');
+    return saved ? JSON.parse(saved) : false; // Default to light mode or use system pref if desired
+  });
   
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
@@ -58,7 +63,20 @@ const App: React.FC = () => {
              setUser(fallbackUser);
              setDoc(userDocRef, { ...fallbackUser, isOnline: true, lastSeen: Date.now() });
           }
-          if (view === 'AUTH') setView('DASHBOARD');
+
+          // RESTORE PREVIOUS STATE (View & Active Chat)
+          const savedView = localStorage.getItem('retriva_view') as ViewState;
+          const savedChatId = localStorage.getItem('retriva_active_chat');
+
+          if (savedView && savedView !== 'AUTH') {
+             setView(savedView);
+             if (savedView === 'MESSAGES' && savedChatId) {
+                setActiveChatId(savedChatId);
+             }
+          } else {
+             setView('DASHBOARD');
+          }
+
         } catch (e) {
           console.error("Error fetching user profile", e);
         }
@@ -72,6 +90,21 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []); 
 
+  // PERSISTENCE EFFECT: Save View & Chat ID
+  useEffect(() => {
+    if (view !== 'AUTH') {
+        localStorage.setItem('retriva_view', view);
+    }
+  }, [view]);
+
+  useEffect(() => {
+    if (activeChatId) {
+        localStorage.setItem('retriva_active_chat', activeChatId);
+    } else {
+        localStorage.removeItem('retriva_active_chat');
+    }
+  }, [activeChatId]);
+
   // Presence Heartbeat
   useEffect(() => {
     if (!user) return;
@@ -82,8 +115,7 @@ const App: React.FC = () => {
     const handleDisconnect = () => {
         if (user) {
             // Best effort attempt to set offline
-            navigator.sendBeacon('/api/offline', JSON.stringify({ uid: user.id })); // Requires backend, but usually we rely on Firestore update on logout
-            // Since we are client side only, we handle explicit logout
+            navigator.sendBeacon('/api/offline', JSON.stringify({ uid: user.id }));
         }
     };
     window.addEventListener('beforeunload', handleDisconnect);
@@ -111,7 +143,6 @@ const App: React.FC = () => {
       setReports(liveReports);
     }, (error) => {
       console.error("Error fetching reports:", error);
-      // setToast({ message: "Syncing reports...", type: 'info' }); 
     });
 
     return () => unsubscribe();
@@ -181,10 +212,11 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-
+  // THEME EFFECT
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
+    localStorage.setItem('retriva_theme', JSON.stringify(darkMode));
   }, [darkMode]);
 
   useEffect(() => {
@@ -199,7 +231,7 @@ const App: React.FC = () => {
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
-    setView('DASHBOARD');
+    // Don't force DASHBOARD here, Auth Listener handles view restoration
     updateDoc(doc(db, 'users', loggedInUser.id), { isOnline: true, lastSeen: Date.now() });
     setTimeout(() => addNotification('Welcome!', `Logged in as ${loggedInUser.name}`, 'system'), 1000);
   };
@@ -210,6 +242,12 @@ const App: React.FC = () => {
         await updateDoc(doc(db, 'users', user.id), { isOnline: false, lastSeen: Date.now() });
       }
       await signOut(auth);
+      
+      // Clear Local Storage State
+      localStorage.removeItem('retriva_view');
+      localStorage.removeItem('retriva_active_chat');
+      // We keep 'retriva_theme' as user preference usually persists per device
+
       setUser(null);
       setView('AUTH');
     } catch (e) {
@@ -225,18 +263,10 @@ const App: React.FC = () => {
     try {
         const batch = writeBatch(db);
 
-        // 1. Delete Reports
-        const reportsQuery = query(collection(db, 'reports'), where('reporterId', '==', user.id));
-        // We need to fetch to get IDs
-        // Note: For large collections, need pagination, simplified here
-        setReports(prev => prev.filter(r => r.reporterId !== user.id)); // Optimistic UI
-        // We can't batch delete comfortably in client without query snapshot, letting backend cleanup usually better
-        // Simulating cleanup via simple individual deletes if batch fails or complex
+        // 1. Delete Reports (Optimistic UI update)
+        setReports(prev => prev.filter(r => r.reporterId !== user.id));
         
-        // 2. Remove user from Chats
-        const userChatsQuery = query(collection(db, 'chats'), where('participants', 'array-contains', user.id));
-        // Logic handled better server side, but here we can remove ID from participants
-        // If participants array becomes empty, delete chat
+        // 2. Remove user from Chats (Handled by backend triggers usually, soft delete here)
         
         // 3. Delete User Doc
         await deleteDoc(doc(db, 'users', user.id));
@@ -244,6 +274,10 @@ const App: React.FC = () => {
         // 4. Auth Delete
         await auth.currentUser?.delete();
         
+        // Clear storage
+        localStorage.removeItem('retriva_view');
+        localStorage.removeItem('retriva_active_chat');
+
         setUser(null);
         setView('AUTH');
         setToast({ message: "Account deleted.", type: 'info' });
@@ -311,7 +345,6 @@ const App: React.FC = () => {
   const handleChatStart = async (report: ItemReport) => {
     if (!user) return;
     
-    // Safety check for reporter ID
     if (!report.reporterId) {
        setToast({ message: "Cannot contact user (Missing ID).", type: 'alert' });
        return;
@@ -322,8 +355,7 @@ const App: React.FC = () => {
         return;
     }
     
-    // Check if chat already exists strictly
-    // We look for a direct chat that includes BOTH me AND the reporter AND is about this item
+    // Check if chat already exists
     const existingChat = chats.find(c => 
       c.type === 'direct' && 
       c.participants.includes(user.id) && 
@@ -334,14 +366,12 @@ const App: React.FC = () => {
     if (existingChat) {
       setActiveChatId(existingChat.id);
       setView('MESSAGES');
-      // If it was deleted by me, restore it
       if (existingChat.deletedIds?.includes(user.id)) {
           updateDoc(doc(db, 'chats', existingChat.id), {
               deletedIds: arrayRemove(user.id)
           });
       }
     } else {
-      // Create new chat in Firestore
       const newChatId = crypto.randomUUID();
       const newChat: Chat = {
         id: newChatId,
@@ -361,7 +391,6 @@ const App: React.FC = () => {
       
       try {
         await setDoc(doc(db, 'chats', newChatId), newChat);
-        // Note: Listener will pick this up and update state
         setActiveChatId(newChatId);
         setView('MESSAGES');
       } catch (e) {
@@ -373,21 +402,19 @@ const App: React.FC = () => {
 
   const handleSendMessage = async (chatId: string, message: Message) => {
     try {
-      // 1. Write message to Subcollection (Fix for 1MB limit)
       const messagesRef = collection(db, 'chats', chatId, 'messages');
       const msgData = JSON.parse(JSON.stringify({ ...message, status: 'sent' }));
       await addDoc(messagesRef, msgData);
 
-      // 2. Update Chat Metadata (Last message, etc.)
       const chatRef = doc(db, 'chats', chatId);
       try {
         await updateDoc(chatRef, {
           lastMessage: message.attachment ? (message.attachment.type === 'image' ? 'Sent a photo' : 'Sent a file') : message.text,
           lastMessageTime: message.timestamp,
-          deletedIds: [] // Un-delete if someone deleted it
+          deletedIds: []
         });
       } catch (metaErr) {
-        console.warn("Metadata update failed (likely doc full), but message sent.", metaErr);
+        console.warn("Metadata update failed", metaErr);
       }
       
     } catch (e) {
@@ -398,7 +425,7 @@ const App: React.FC = () => {
 
   const handleBlockChat = async (chatId: string) => {
     const chat = chats.find(c => c.id === chatId);
-    if (!chat || chat.type === 'global') return; // Cannot block global chat
+    if (!chat || chat.type === 'global') return;
 
     try {
       const newStatus = !chat.isBlocked;
@@ -418,7 +445,6 @@ const App: React.FC = () => {
   const handleDeleteChat = async (chatId: string) => {
       if (!user) return;
       try {
-          // Soft delete: Add user ID to deletedIds array
           const chatRef = doc(db, 'chats', chatId);
           await updateDoc(chatRef, {
               deletedIds: arrayUnion(user.id)
@@ -451,7 +477,6 @@ const App: React.FC = () => {
 
   const unreadMessageCount = chats.reduce((acc, chat) => {
     if (!user) return acc;
-    // Check messages where I am not the sender and status is not 'read'
     const count = chat.messages.filter(m => m.senderId !== user.id && m.status !== 'read').length;
     return acc + count;
   }, 0);
@@ -518,7 +543,15 @@ const App: React.FC = () => {
           onDeleteChat={handleDeleteChat}
         />
       );
-      case 'PROFILE': return <Profile user={user} onUpdate={setUser} onBack={() => setView('DASHBOARD')} onDeleteAccount={handleDeleteAccount} />;
+      case 'PROFILE': return (
+        <Profile 
+          user={user} 
+          onUpdate={setUser} 
+          onBack={() => setView('DASHBOARD')} 
+          onDeleteAccount={handleDeleteAccount}
+          onLogout={handleLogout} 
+        />
+      );
       default: return null;
     }
   };
@@ -588,7 +621,6 @@ const App: React.FC = () => {
                      {user.avatar && !avatarError ? <img src={user.avatar} className="w-full h-full object-cover" onError={() => setAvatarError(true)} /> : <UserIcon className="w-full h-full p-2 text-indigo-300" />}
                   </div>
                </button>
-               <button onClick={handleLogout} className="hidden md:block text-slate-400 hover:text-red-500 transition-colors ml-1"><LogOut className="w-5 h-5" /></button>
             </div>
           </div>
       </nav>
