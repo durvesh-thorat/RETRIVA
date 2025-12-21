@@ -190,14 +190,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       {/* FLOATING CARD CONTAINER */}
       <div className="relative z-10 w-full max-w-6xl flex flex-col lg:flex-row bg-[#080808] rounded-[2rem] shadow-2xl border border-white/5 overflow-hidden ring-1 ring-white/5 min-h-[500px]">
         
-        {/* LEFT PANEL - DARKER Side (Deep Black/Indigo) */}
-        <div className="lg:w-5/12 relative p-8 lg:p-10 flex flex-col justify-between bg-black overflow-hidden shrink-0 text-white border-b lg:border-b-0 lg:border-r border-white/5">
+        {/* LEFT PANEL - MODIFIED BACKGROUND FOR CONTRAST */}
+        <div className="lg:w-5/12 relative p-8 lg:p-10 flex flex-col justify-between bg-[#0f172a] overflow-hidden shrink-0 text-white border-b lg:border-b-0 lg:border-r border-white/5">
            
-           {/* Deep Dark Gradient Overlay - Darker than button */}
-           <div className="absolute inset-0 bg-gradient-to-b from-black via-[#050508] to-[#0a0a12] pointer-events-none"></div>
+           {/* Base Gradient */}
+           <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-[#0f172a] to-black z-0"></div>
            
-           {/* Subtle highlight */}
-           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-900/10 rounded-full blur-[80px] pointer-events-none"></div>
+           {/* Top-Left Highlight for Logo */}
+           <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-[100px] pointer-events-none z-0 mix-blend-screen"></div>
+           
+           {/* Bottom-Right Lowlight */}
+           <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-900/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
+
+           {/* Subtle Dot Pattern */}
+           <div className="absolute inset-0 opacity-[0.15] z-0" 
+                style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.15) 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+           </div>
 
            {/* Content */}
            <div className="relative z-10 flex flex-col h-full">
@@ -238,12 +246,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <h1 className="text-3xl lg:text-4xl font-black tracking-tighter mb-2 leading-tight bg-gradient-to-br from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
                   RETRIVA
                 </h1>
-                <p className="text-sm text-slate-500 font-medium leading-relaxed max-w-sm">
+                <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-sm">
                   The smart way to find what you've lost on campus.
                 </p>
               </div>
               
-              <div className="h-px bg-white/5 w-full mb-6"></div>
+              <div className="h-px bg-white/10 w-full mb-6"></div>
 
               {/* Rich Features List */}
               <div className="space-y-5 flex-1">
@@ -253,7 +261,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </div>
                     <div>
                        <h3 className="font-bold text-slate-200 text-sm mb-0.5">Gemini Vision AI</h3>
-                       <p className="text-[11px] text-slate-500 leading-relaxed">
+                       <p className="text-[11px] text-slate-400 leading-relaxed">
                          Upload a photo and let our AI handle the description and tagging automatically.
                        </p>
                     </div>
@@ -265,7 +273,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </div>
                     <div>
                        <h3 className="font-bold text-slate-200 text-sm mb-0.5">Real-time Matching</h3>
-                       <p className="text-[11px] text-slate-500 leading-relaxed">
+                       <p className="text-[11px] text-slate-400 leading-relaxed">
                          Get notified instantly when a matching item is reported in the system.
                        </p>
                     </div>
@@ -277,7 +285,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </div>
                     <div>
                        <h3 className="font-bold text-slate-200 text-sm mb-0.5">Verified Students</h3>
-                       <p className="text-[11px] text-slate-500 leading-relaxed">
+                       <p className="text-[11px] text-slate-400 leading-relaxed">
                          A secure environment exclusively for verified campus students and staff.
                        </p>
                     </div>
@@ -285,12 +293,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
 
               {/* Footer Stats */}
-              <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between text-[10px] font-bold text-slate-600 uppercase tracking-widest">
+              <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                  <div className="flex items-center gap-2">
                     <div className="flex space-x-1">
-                       <span className="w-1 h-3 bg-indigo-900 rounded-full animate-pulse"></span>
-                       <span className="w-1 h-4 bg-indigo-700 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></span>
-                       <span className="w-1 h-2 bg-indigo-900 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                       <span className="w-1 h-3 bg-indigo-500 rounded-full animate-pulse"></span>
+                       <span className="w-1 h-4 bg-indigo-400 rounded-full animate-pulse" style={{ animationDelay: '0.1s' }}></span>
+                       <span className="w-1 h-2 bg-indigo-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
                     </div>
                     Live Network
                  </div>
