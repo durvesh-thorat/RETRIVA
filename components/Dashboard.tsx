@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ItemReport, ReportType, ItemCategory, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap, Cpu, AlertCircle, Radar } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap, Cpu, AlertCircle, Radar, ArrowLeftRight } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -93,26 +94,47 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
   const [isProcessingSearch, setIsProcessingSearch] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ItemReport | null>(null);
   
-  // AI Match Center State - UPGRADED
+  // AI Match Center State - Optimised
   const [matches, setMatches] = useState<Record<string, ItemReport[]>>({});
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [lastScanTime, setLastScanTime] = useState<number>(0);
   
-  // Ref to track if we've done the initial scan
-  const hasInitialScanRun = useRef(false);
+  // CACHING KEYS
+  const CACHE_SIG_KEY = `retriva_sig_${user.id}`;
+  const CACHE_DATA_KEY = `retriva_matches_${user.id}`;
 
-  // AUTOMATIC MATCH SCANNING
+  // AUTOMATIC MATCH SCANNING (Optimized)
   useEffect(() => {
     const scanAll = async () => {
       const myOpenReports = reports.filter(r => r.reporterId === user.id && r.status === 'OPEN');
       
-      // If I have no open reports, clear matches
+      // If I have no open reports, clear matches & cache
       if (myOpenReports.length === 0) {
           setMatches({});
-          setIsAutoScanning(false);
+          localStorage.removeItem(CACHE_SIG_KEY);
+          localStorage.removeItem(CACHE_DATA_KEY);
           return;
       }
 
+      // 1. GENERATE DATA SIGNATURE
+      // We use the count + ID of the newest report to determine if DB has changed.
+      // This is lightweight and avoids scanning on simple page reloads if data is same.
+      const newestReportId = reports.length > 0 ? reports[0].id : 'none';
+      const currentSignature = `${reports.length}-${newestReportId}-${myOpenReports.length}`;
+
+      const cachedSignature = localStorage.getItem(CACHE_SIG_KEY);
+      const cachedMatches = localStorage.getItem(CACHE_DATA_KEY);
+
+      // 2. CHECK CACHE
+      if (cachedSignature === currentSignature && cachedMatches) {
+         try {
+           setMatches(JSON.parse(cachedMatches));
+           return; // Skip expensive scan
+         } catch (e) {
+           console.warn("Cache corrupted, re-scanning");
+         }
+      }
+
+      // 3. PERFORM SCAN (Only if signature changed)
       setIsAutoScanning(true);
       const newMatches: Record<string, ItemReport[]> = {};
       let foundAny = false;
@@ -139,23 +161,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           }
       }
       
+      // 4. UPDATE STATE & CACHE
       setMatches(newMatches);
+      localStorage.setItem(CACHE_SIG_KEY, currentSignature);
+      localStorage.setItem(CACHE_DATA_KEY, JSON.stringify(newMatches));
       setIsAutoScanning(false);
-      setLastScanTime(Date.now());
     };
 
-    // Debounce scan logic - Trigger when reports length changes or 5s after last scan
-    // This simple check ensures we don't spam, but we do react to updates
-    const now = Date.now();
-    if (!hasInitialScanRun.current || (now - lastScanTime > 5000)) {
-       const timer = setTimeout(() => {
-          scanAll();
-          hasInitialScanRun.current = true;
-       }, 1000);
-       return () => clearTimeout(timer);
-    }
+    // Debounce to allow multiple quick updates (like initial load batching) to settle
+    const timer = setTimeout(() => {
+       scanAll();
+    }, 1000);
+    return () => clearTimeout(timer);
 
-  }, [reports.length, user.id]); // Re-run mainly when reports count changes
+  }, [reports, user.id]); // Re-run when reports change
 
   const filteredReports = useMemo(() => {
     // Filter by Type AND Status
@@ -293,7 +312,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           </div>
       </section>
 
-      {/* ALWAYS ACTIVE AI MATCH CENTER */}
+      {/* ALWAYS ACTIVE AI MATCH CENTER - REFINED DESIGN */}
       <div id="match-center" className="animate-fade-in space-y-4 scroll-mt-24 mb-12">
            <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-3">
@@ -304,17 +323,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                    {isAutoScanning && <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span></span>}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Live Match Center</h2>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Live Intelligence</h2>
                   <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                    {isAutoScanning ? 'Scanning Database...' : `Monitoring ${myItemsCount} Active Reports`}
+                    {isAutoScanning ? 'Analyzing New Data...' : `Monitoring ${myItemsCount} Active Reports`}
                   </p>
                 </div>
               </div>
               
               {hasMatches && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-full">
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-full animate-pulse-soft">
                    <Sparkles className="w-3 h-3 text-emerald-500" />
-                   <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Matches Found</span>
+                   <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Action Required</span>
                 </div>
               )}
            </div>
@@ -328,40 +347,57 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  {isAutoScanning && !hasMatches ? (
                     <div className="flex flex-col items-center justify-center py-10">
                        <Loader2 className="w-8 h-8 text-brand-violet animate-spin mb-3" />
-                       <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Scanning for matches...</p>
+                       <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Scanning new reports...</p>
                     </div>
                  ) : hasMatches ? (
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                        {Object.entries(matches).map(([sourceId, matchedItems]) => {
                           const sourceItem = reports.find(r => r.id === sourceId);
                           if (!sourceItem) return null;
 
                           return (
                              <div key={sourceId} className="animate-slide-up">
-                                <div className="flex items-center gap-2 mb-3">
-                                   <div className="w-1.5 h-1.5 rounded-full bg-brand-violet"></div>
-                                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                                      For your <span className="text-slate-900 dark:text-white">{sourceItem.title}</span>
-                                   </h3>
+                                <div className="flex items-center gap-3 mb-4">
+                                   <div className="w-2 h-2 rounded-full bg-brand-violet"></div>
+                                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                      Candidates for your <span className="text-slate-900 dark:text-white border-b-2 border-brand-violet/20 pb-0.5">{sourceItem.title}</span>
+                                   </div>
                                 </div>
+                                
+                                {/* Concise Grid Layout */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                    {matchedItems.map(match => (
-                                      <div key={match.id} onClick={() => onCompare(sourceItem, match)} className="group bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-brand-violet hover:shadow-xl transition-all cursor-pointer flex gap-4">
-                                         <div className="w-20 h-20 rounded-xl bg-slate-100 dark:bg-slate-900 overflow-hidden shrink-0 relative">
-                                            {match.imageUrls[0] && <img src={match.imageUrls[0]} className="w-full h-full object-cover" />}
-                                            <div className="absolute inset-0 bg-brand-violet/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                               <ScanLine className="w-6 h-6 text-white" />
+                                      <div 
+                                        key={match.id} 
+                                        onClick={() => onCompare(sourceItem, match)} 
+                                        className="group bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-brand-violet hover:shadow-xl transition-all cursor-pointer flex items-center gap-4"
+                                      >
+                                         {/* Compare Visual */}
+                                         <div className="flex items-center gap-2 shrink-0">
+                                            {/* My Item Tiny */}
+                                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 overflow-hidden relative opacity-60 grayscale group-hover:grayscale-0 transition-all">
+                                                {sourceItem.imageUrls[0] ? <img src={sourceItem.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-4 h-4 m-auto text-slate-400" />}
+                                            </div>
+                                            
+                                            <ArrowLeftRight className="w-3 h-3 text-brand-violet/50" />
+
+                                            {/* Found Item Main */}
+                                            <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-900 overflow-hidden relative shadow-sm group-hover:scale-105 transition-transform">
+                                                {match.imageUrls[0] ? <img src={match.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-6 h-6 m-auto text-slate-400" />}
+                                                <div className="absolute inset-0 bg-brand-violet/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                             </div>
                                          </div>
-                                         <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                            <div className="flex justify-between items-start">
-                                               <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate pr-2">{match.title}</h4>
-                                               <span className="text-[10px] text-slate-400 whitespace-nowrap">{match.date}</span>
+                                         
+                                         {/* Info */}
+                                         <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start mb-1">
+                                               <h4 className="font-bold text-slate-900 dark:text-white text-xs truncate">{match.title}</h4>
+                                               <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded uppercase">Match</span>
                                             </div>
-                                            <p className="text-xs text-slate-500 line-clamp-1 mb-2">{match.description}</p>
-                                            <button className="text-[10px] font-black uppercase tracking-widest text-brand-violet bg-indigo-50 dark:bg-indigo-900/30 py-1.5 rounded-lg hover:bg-brand-violet hover:text-white transition-colors">
-                                               Compare & Verify
-                                            </button>
+                                            <p className="text-[10px] text-slate-500 line-clamp-1 mb-2">{match.location} • {match.date}</p>
+                                            <div className="text-[9px] font-black uppercase tracking-widest text-brand-violet group-hover:underline">
+                                               Compare Items
+                                            </div>
                                          </div>
                                       </div>
                                    ))}
