@@ -41,6 +41,17 @@ const App: React.FC = () => {
   const [comparingItems, setComparingItems] = useState<{item1: ItemReport, item2: ItemReport} | null>(null);
   const [avatarError, setAvatarError] = useState(false);
 
+  // NEW: Listen for system-wide Toast Events (e.g. from GeminiService)
+  useEffect(() => {
+    const handleToastEvent = (e: any) => {
+        if (e.detail) setToast(e.detail);
+    };
+    // @ts-ignore - Custom event is not in WindowEventMap
+    window.addEventListener('retriva-toast', handleToastEvent);
+    // @ts-ignore
+    return () => window.removeEventListener('retriva-toast', handleToastEvent);
+  }, []);
+
   // 1. AUTH LISTENER: Persist Login & Presence
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -610,7 +621,9 @@ const App: React.FC = () => {
         </nav>
       )}
 
-      {/* Main Container - Remove padding if on Features Page */}
+      {/* Main Container - Remove padding if on Features Page for immersive effect, OR keep it. 
+          The design prompt requested a "Brand New Page", implies fullscreen. 
+          Let's conditionally hide the main nav if view === 'FEATURES' */}
       <main className={`flex-grow w-full mx-auto relative ${view === 'FEATURES' ? '' : 'p-4 md:p-6 max-w-[1400px]'}`}>
         {renderContent()}
 

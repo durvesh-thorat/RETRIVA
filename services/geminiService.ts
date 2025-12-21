@@ -1,4 +1,6 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+// @ts-ignore
 import Groq from "groq-sdk";
 import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 
@@ -230,6 +232,7 @@ const generateWithCascade = async (
 
       // DISPATCH EVENT FOR UI TOAST
       if (typeof window !== 'undefined') {
+         // @ts-ignore
          window.dispatchEvent(new CustomEvent('retriva-toast', { 
             detail: { message: 'Gemini busy. Switched to backup AI (Groq).', type: 'info' } 
          }));
