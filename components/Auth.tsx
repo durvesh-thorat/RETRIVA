@@ -16,7 +16,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  
+  // Separate loading states
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<{domain: string, projectId: string} | null>(null);
 
@@ -26,13 +30,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          setLoading(true);
+          setIsGoogleLoading(true);
           const firebaseUser = result.user;
           await processLogin(firebaseUser);
         }
       } catch (err: any) {
         console.error("Redirect Login Error:", err);
         handleAuthError(err);
+        setIsGoogleLoading(false);
       }
     };
     checkRedirect();
@@ -61,12 +66,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       setError("Failed to save user data.");
-      setLoading(false);
+      // Throwing error to be caught by caller for loading state cleanup
+      throw err;
     }
   };
 
   const handleAuthError = (err: any) => {
-    setLoading(false);
     console.error(err);
     
     if (err.code === 'auth/unauthorized-domain') {
@@ -84,7 +89,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
+    if (isEmailLoading || isGoogleLoading) return;
+    
+    setIsGoogleLoading(true);
     setError(null);
     setDebugInfo(null);
     
@@ -93,24 +100,35 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const result = await signInWithPopup(auth, googleProvider);
       await processLogin(result.user);
     } catch (err: any) {
+      // Check for popup closure specifically to handle gracefully
+      if (err.code === 'auth/popup-closed-by-user') {
+          console.log("Google Sign-In cancelled by user");
+          setIsGoogleLoading(false);
+          return;
+      }
+
       // 2. Fallback to Redirect if Popup fails (Fixes COOP/Network/Mobile issues)
-      if (err.code === 'auth/network-request-failed' || err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
+      if (err.code === 'auth/network-request-failed' || err.code === 'auth/popup-blocked') {
          console.warn("Popup failed, falling back to redirect...");
          try {
            await signInWithRedirect(auth, googleProvider);
            // Function ends here, page will redirect
          } catch (redirectErr: any) {
            handleAuthError(redirectErr);
+           setIsGoogleLoading(false);
          }
       } else {
         handleAuthError(err);
+        setIsGoogleLoading(false);
       }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (isEmailLoading || isGoogleLoading) return;
+
+    setIsEmailLoading(true);
     setError(null);
     setDebugInfo(null);
     
@@ -135,7 +153,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         onLogin(newUser);
       }
     } catch (err: any) {
-      setLoading(false);
+      setIsEmailLoading(false);
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Incorrect email or password.');
       } else if (err.code === 'auth/email-already-in-use') {
@@ -338,6 +356,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                              className="w-full pl-12 pr-6 py-4 bg-[#14161f] border border-slate-800 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all duration-300 placeholder:text-slate-600 text-sm"
                              placeholder="John Doe"
                              required
+                             disabled={isEmailLoading || isGoogleLoading}
                           />
                        </div>
                     </div>
@@ -354,6 +373,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                           className="w-full pl-12 pr-6 py-4 bg-[#14161f] border border-slate-800 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all duration-300 placeholder:text-slate-600 text-sm"
                           placeholder="student@university.edu"
                           required
+                          disabled={isEmailLoading || isGoogleLoading}
                        />
                     </div>
                  </div>
@@ -372,11 +392,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                           className="w-full pl-12 pr-14 py-4 bg-[#14161f] border border-slate-800 rounded-2xl text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all duration-300 placeholder:text-slate-600 text-sm"
                           placeholder="••••••••"
                           required
+                          disabled={isEmailLoading || isGoogleLoading}
                        />
                        <button 
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-6 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-indigo-500 transition-colors"
+                          disabled={isEmailLoading || isGoogleLoading}
                        >
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                        </button>
@@ -385,10 +407,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                  <button 
                     type="submit" 
-                    disabled={loading}
+                    disabled={isEmailLoading || isGoogleLoading}
                     className="w-full mt-6 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:shadow-indigo-600/40 hover:scale-[1.01] active:scale-[0.98] transition-all duration-300 disabled:opacity-70 disabled:transform-none flex items-center justify-center gap-2 group"
                  >
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                    {isEmailLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
                        <>
                           {isLogin ? 'Sign In' : 'Create Account'} <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                        </>
@@ -409,11 +431,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                disabled={loading}
+                disabled={isEmailLoading || isGoogleLoading}
                 className="relative w-full group"
               >
                 {/* Glow Backdrop */}
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 via-red-500 to-yellow-500 rounded-2xl opacity-10 group-hover:opacity-60 blur-lg transition-all duration-500 animate-gradient-slow"></div>
+                <div className={`absolute -inset-0.5 bg-gradient-to-r from-blue-500 via-red-500 to-yellow-500 rounded-2xl opacity-10 blur-lg transition-all duration-500 animate-gradient-slow ${isGoogleLoading ? 'opacity-40' : 'group-hover:opacity-60'}`}></div>
                 
                 {/* Button Container - Google Dark Grey */}
                 <div className="relative w-full py-4 bg-[#202124] rounded-2xl border border-white/10 flex items-center justify-between px-6 overflow-hidden transition-all duration-300 group-hover:scale-[1.02] active:scale-[0.98] shadow-2xl">
@@ -440,7 +462,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                    {/* Arrow Icon */}
                    <div className="w-10 h-10 rounded-full bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-white/10 transition-colors z-20">
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />}
+                      {isGoogleLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />}
                    </div>
                 </div>
               </button>
