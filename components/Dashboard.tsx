@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, ItemCategory, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -182,7 +182,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
               <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none"></div>
               
               <div className="relative z-10 w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                       {/* Badge */}
                       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-[10px] font-black backdrop-blur-md text-white shadow-sm tracking-widest uppercase">
                         <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
@@ -199,6 +199,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                       <p className="text-slate-400 text-base md:text-lg font-medium max-w-md leading-relaxed">
                         Find your items instantly with Retriva's smart matching engine.
                       </p>
+
+                      {/* NEW FEATURES BUTTON */}
+                      <button 
+                        onClick={() => onNavigate('FEATURES')}
+                        className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-[length:200%_auto] hover:bg-right transition-all duration-500 rounded-xl text-white font-bold text-sm shadow-xl shadow-indigo-600/30 hover:shadow-indigo-600/50 hover:-translate-y-0.5"
+                      >
+                         <Zap className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                         <span>Discover the Magic</span>
+                         <ArrowRight className="w-4 h-4 opacity-70" />
+                      </button>
                   </div>
 
                   {/* Buttons */}

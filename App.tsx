@@ -8,6 +8,7 @@ import Profile from './components/Profile';
 import Toast from './components/Toast';
 import NotificationCenter from './components/NotificationCenter';
 import MatchComparator from './components/MatchComparator';
+import FeaturesPage from './components/FeaturesPage';
 import { User, ViewState, ItemReport, ReportType, ItemCategory, AppNotification, Chat, Message } from './types';
 import { MessageCircle, Bell, Moon, Sun, User as UserIcon, Plus, SearchX, Box, Loader2 } from 'lucide-react';
 
@@ -528,6 +529,9 @@ const App: React.FC = () => {
           onLogout={handleLogout} 
         />
       );
+      case 'FEATURES': return (
+        <FeaturesPage onBack={() => setView('DASHBOARD')} />
+      );
       default: return null;
     }
   };
@@ -536,76 +540,82 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-off-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300 flex flex-col">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      <nav className="sticky top-0 z-40 bg-off-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6">
-          <div className="max-w-7xl mx-auto h-20 flex items-center justify-between py-3">
-            <div className="flex items-center gap-10">
-              <div className="flex items-center gap-4 cursor-pointer group" onClick={() => { setView('DASHBOARD'); setEditingReport(null); }}>
-                <div className="w-14 h-14 flex items-center justify-center group-hover:scale-110 transition-transform filter drop-shadow-lg relative z-10">
-                   <svg viewBox="0 0 200 200" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <defs>
-                        <linearGradient id="pinGradientNav" x1="100" y1="25" x2="100" y2="190" gradientUnits="userSpaceOnUse">
-                          <stop offset="0" stopColor="#6366f1" />
-                          <stop offset="1" stopColor="#a855f7" />
-                        </linearGradient>
-                      </defs>
-                      <g opacity="0.5">
-                         <circle cx="100" cy="100" r="85" stroke="url(#pinGradientNav)" strokeWidth="2" strokeDasharray="10 10" strokeLinecap="round" />
-                         <circle cx="100" cy="100" r="70" stroke="url(#pinGradientNav)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />
-                         <circle cx="185" cy="100" r="3" fill="#a855f7" />
-                         <circle cx="15" cy="100" r="3" fill="#6366f1" />
-                      </g>
-                      <ellipse cx="100" cy="190" rx="20" ry="6" fill="#6366f1" opacity="0.3" />
-                      <ellipse cx="100" cy="190" rx="10" ry="3" fill="#6366f1" opacity="0.5" />
-                      <path fillRule="evenodd" clipRule="evenodd" d="M100 25 C60 25 25 60 25 100 C25 140 90 185 100 190 C110 185 175 140 175 100 C175 60 140 25 100 25 Z" fill="url(#pinGradientNav)" />
-                      <circle cx="100" cy="100" r="42" fill="white" />
-                      <g transform="translate(100 100)">
-                        <path d="M0 -24 V24 M-24 0 H24" stroke="#7c3aed" strokeWidth="6" strokeLinecap="round" />
-                        <path d="M-16 -16 L16 16 M16 -16 L-16 16" stroke="#7c3aed" strokeWidth="6" strokeLinecap="round" />
-                        <circle r="7" fill="#7c3aed" />
-                        <circle cx="0" cy="-30" r="4" fill="#7c3aed" />
-                        <circle cx="0" cy="30" r="4" fill="#7c3aed" />
-                        <circle cx="-30" cy="0" r="4" fill="#7c3aed" />
-                        <circle cx="30" cy="0" r="4" fill="#7c3aed" />
-                      </g>
-                   </svg>
-                </div>
-                <div className="flex flex-col">
-                   <span className="block font-black text-2xl tracking-tighter leading-none text-slate-900 dark:text-white">RETRIVA</span>
-                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Campus Route & Connect</span>
+      {/* Hide standard Nav if on Features Page for immersive effect, OR keep it. 
+          The design prompt requested a "Brand New Page", implies fullscreen. 
+          Let's conditionally hide the main nav if view === 'FEATURES' */}
+      {view !== 'FEATURES' && (
+        <nav className="sticky top-0 z-40 bg-off-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6">
+            <div className="max-w-7xl mx-auto h-20 flex items-center justify-between py-3">
+              <div className="flex items-center gap-10">
+                <div className="flex items-center gap-4 cursor-pointer group" onClick={() => { setView('DASHBOARD'); setEditingReport(null); }}>
+                  <div className="w-14 h-14 flex items-center justify-center group-hover:scale-110 transition-transform filter drop-shadow-lg relative z-10">
+                     <svg viewBox="0 0 200 200" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <linearGradient id="pinGradientNav" x1="100" y1="25" x2="100" y2="190" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stopColor="#6366f1" />
+                            <stop offset="1" stopColor="#a855f7" />
+                          </linearGradient>
+                        </defs>
+                        <g opacity="0.5">
+                           <circle cx="100" cy="100" r="85" stroke="url(#pinGradientNav)" strokeWidth="2" strokeDasharray="10 10" strokeLinecap="round" />
+                           <circle cx="100" cy="100" r="70" stroke="url(#pinGradientNav)" strokeWidth="2" strokeDasharray="5 5" strokeLinecap="round" />
+                           <circle cx="185" cy="100" r="3" fill="#a855f7" />
+                           <circle cx="15" cy="100" r="3" fill="#6366f1" />
+                        </g>
+                        <ellipse cx="100" cy="190" rx="20" ry="6" fill="#6366f1" opacity="0.3" />
+                        <ellipse cx="100" cy="190" rx="10" ry="3" fill="#6366f1" opacity="0.5" />
+                        <path fillRule="evenodd" clipRule="evenodd" d="M100 25 C60 25 25 60 25 100 C25 140 90 185 100 190 C110 185 175 140 175 100 C175 60 140 25 100 25 Z" fill="url(#pinGradientNav)" />
+                        <circle cx="100" cy="100" r="42" fill="white" />
+                        <g transform="translate(100 100)">
+                          <path d="M0 -24 V24 M-24 0 H24" stroke="#7c3aed" strokeWidth="6" strokeLinecap="round" />
+                          <path d="M-16 -16 L16 16 M16 -16 L-16 16" stroke="#7c3aed" strokeWidth="6" strokeLinecap="round" />
+                          <circle r="7" fill="#7c3aed" />
+                          <circle cx="0" cy="-30" r="4" fill="#7c3aed" />
+                          <circle cx="0" cy="30" r="4" fill="#7c3aed" />
+                          <circle cx="-30" cy="0" r="4" fill="#7c3aed" />
+                          <circle cx="30" cy="0" r="4" fill="#7c3aed" />
+                        </g>
+                     </svg>
+                  </div>
+                  <div className="flex flex-col">
+                     <span className="block font-black text-2xl tracking-tighter leading-none text-slate-900 dark:text-white">RETRIVA</span>
+                     <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Campus Route & Connect</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-               <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500 transition-colors">
-                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-               </button>
-               <button onClick={() => setView('MESSAGES')} className={`relative p-2 rounded-full transition-all ${view === 'MESSAGES' ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
-                 <MessageCircle className="w-5 h-5" />
-                 {unreadMessageCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
-               </button>
-               <div className="relative">
-                 <button onClick={() => setShowNotificationCenter(!showNotificationCenter)} className={`p-2 rounded-full transition-all ${showNotificationCenter ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
-                   <Bell className="w-5 h-5" />
-                   {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
+              
+              <div className="flex items-center gap-3">
+                 <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500 transition-colors">
+                   {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                  </button>
-                 {showNotificationCenter && <NotificationCenter notifications={notifications} onClose={() => setShowNotificationCenter(false)} onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))} onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))} onClearAll={() => { setNotifications([]); setShowNotificationCenter(false); }} onNavigate={(v) => { setView(v); setShowNotificationCenter(false); }} />}
-               </div>
-               <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
-               <button onClick={() => setView('PROFILE')} className="flex items-center gap-3 pl-1 hover:opacity-80 transition-opacity">
-                  <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-slate-800 overflow-hidden ring-2 ring-white dark:ring-slate-900 shadow-sm">
-                     {user.avatar && !avatarError ? <img src={user.avatar} className="w-full h-full object-cover" onError={() => setAvatarError(true)} /> : <UserIcon className="w-full h-full p-2 text-indigo-300" />}
-                  </div>
-               </button>
+                 <button onClick={() => setView('MESSAGES')} className={`relative p-2 rounded-full transition-all ${view === 'MESSAGES' ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
+                   <MessageCircle className="w-5 h-5" />
+                   {unreadMessageCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
+                 </button>
+                 <div className="relative">
+                   <button onClick={() => setShowNotificationCenter(!showNotificationCenter)} className={`p-2 rounded-full transition-all ${showNotificationCenter ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
+                     <Bell className="w-5 h-5" />
+                     {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
+                   </button>
+                   {showNotificationCenter && <NotificationCenter notifications={notifications} onClose={() => setShowNotificationCenter(false)} onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))} onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))} onClearAll={() => { setNotifications([]); setShowNotificationCenter(false); }} onNavigate={(v) => { setView(v); setShowNotificationCenter(false); }} />}
+                 </div>
+                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
+                 <button onClick={() => setView('PROFILE')} className="flex items-center gap-3 pl-1 hover:opacity-80 transition-opacity">
+                    <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-slate-800 overflow-hidden ring-2 ring-white dark:ring-slate-900 shadow-sm">
+                       {user.avatar && !avatarError ? <img src={user.avatar} className="w-full h-full object-cover" onError={() => setAvatarError(true)} /> : <UserIcon className="w-full h-full p-2 text-indigo-300" />}
+                    </div>
+                 </button>
+              </div>
             </div>
-          </div>
-      </nav>
+        </nav>
+      )}
 
-      <main className="flex-grow p-4 md:p-6 w-full max-w-[1400px] mx-auto relative">
+      {/* Main Container - Remove padding if on Features Page */}
+      <main className={`flex-grow w-full mx-auto relative ${view === 'FEATURES' ? '' : 'p-4 md:p-6 max-w-[1400px]'}`}>
         {renderContent()}
 
-        {/* FLOATING ACTION BUTTON (FAB) */}
-        {user && view !== 'AUTH' && view !== 'MESSAGES' && (
+        {/* FLOATING ACTION BUTTON (FAB) - Hide on Features Page */}
+        {user && view !== 'AUTH' && view !== 'MESSAGES' && view !== 'FEATURES' && (
           <div className="fixed bottom-24 right-6 md:bottom-8 md:right-8 z-50 flex flex-col items-end gap-3">
              {showFabMenu && (
                 <div className="flex flex-col items-end gap-5 mb-4 animate-in fade-in slide-in-from-bottom-8 zoom-in-90 duration-500 ease-out">
@@ -654,25 +664,27 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="w-full relative bg-white dark:bg-slate-950 mt-auto border-t border-slate-100 dark:border-slate-800">
-          <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>
-          <div className="max-w-7xl mx-auto px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] font-medium text-slate-400">
-            <div className="flex items-center gap-4">
-               <span>&copy; 2025 RETRIVA</span>
-               <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></div>
-               <div className="flex gap-3">
-                  <a href="#" className="hover:text-indigo-500 transition-colors">Privacy</a>
-                  <a href="#" className="hover:text-indigo-500 transition-colors">Terms</a>
-               </div>
+      {view !== 'FEATURES' && (
+        <footer className="w-full relative bg-white dark:bg-slate-950 mt-auto border-t border-slate-100 dark:border-slate-800">
+            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>
+            <div className="max-w-7xl mx-auto px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] font-medium text-slate-400">
+              <div className="flex items-center gap-4">
+                 <span>&copy; 2025 RETRIVA</span>
+                 <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></div>
+                 <div className="flex gap-3">
+                    <a href="#" className="hover:text-indigo-500 transition-colors">Privacy</a>
+                    <a href="#" className="hover:text-indigo-500 transition-colors">Terms</a>
+                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                 <span className="opacity-60">Engineered by</span>
+                 <span className="font-cursive text-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent hover:scale-105 transition-transform cursor-default">
+                   4SCRIPT
+                 </span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-               <span className="opacity-60">Engineered by</span>
-               <span className="font-cursive text-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent hover:scale-105 transition-transform cursor-default">
-                 4SCRIPT
-               </span>
-            </div>
-          </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 };
