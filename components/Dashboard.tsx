@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, User, ViewState } from '../types';
 import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint } from 'lucide-react';
@@ -360,6 +359,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                         const sourceItem = reports.find(r => r.id === sourceId);
                         if (!sourceItem) return null;
 
+                        const items = matchedItems as ItemReport[];
+
                         return (
                            <div key={sourceId} className="snap-center shrink-0 w-[420px] h-48 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex overflow-hidden group hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
                               
@@ -379,12 +380,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                               <div className="flex-1 flex flex-col min-w-0">
                                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
                                     <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
-                                       <Sparkles className="w-3 h-3" /> {matchedItems.length} Candidates
+                                       <Sparkles className="w-3 h-3" /> {items.length} Candidates
                                     </span>
                                  </div>
                                  
                                  <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                                    {(matchedItems as ItemReport[]).map(match => (
+                                    {items.map(match => (
                                        <div 
                                          key={match.id}
                                          onClick={() => onCompare(sourceItem, match)}
