@@ -400,29 +400,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (chatId: string, message: Message) => {
-    try {
-      const messagesRef = collection(db, 'chats', chatId, 'messages');
-      const msgData = JSON.parse(JSON.stringify({ ...message, status: 'sent' }));
-      await addDoc(messagesRef, msgData);
-
-      const chatRef = doc(db, 'chats', chatId);
-      try {
-        await updateDoc(chatRef, {
-          lastMessage: message.attachment ? (message.attachment.type === 'image' ? 'Sent a photo' : 'Sent a file') : message.text,
-          lastMessageTime: message.timestamp,
-          deletedIds: []
-        });
-      } catch (metaErr) {
-        console.warn("Metadata update failed", metaErr);
-      }
-      
-    } catch (e) {
-      console.error("Send message error", e);
-      setToast({ message: "Failed to send message", type: 'alert' });
-    }
-  };
-
   const handleBlockChat = async (chatId: string) => {
     const chat = chats.find(c => c.id === chatId);
     if (!chat || chat.type === 'global') return;
@@ -538,7 +515,6 @@ const App: React.FC = () => {
           chats={chats}
           activeChatId={activeChatId}
           onSelectChat={setActiveChatId}
-          onSendMessage={handleSendMessage}
           onBlockChat={handleBlockChat}
           onDeleteChat={handleDeleteChat}
         />

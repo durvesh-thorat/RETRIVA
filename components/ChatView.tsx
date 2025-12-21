@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chat, User, Message } from '../types';
 import { Send, Search, ArrowLeft, MessageCircle, Check, CheckCheck, Paperclip, File, ShieldBan, ShieldCheck, Lock, Globe, Users, Trash2, Home, X, Pin } from 'lucide-react';
-import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot, writeBatch, addDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { uploadImage } from '../services/cloudinary';
 
@@ -13,12 +13,11 @@ interface ChatViewProps {
   chats: Chat[];
   activeChatId: string | null;
   onSelectChat: (id: string | null) => void;
-  onSendMessage: (chatId: string, message: Message) => void;
   onBlockChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
 }
 
-const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats, activeChatId, onSelectChat, onSendMessage, onBlockChat, onDeleteChat }) => {
+const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats, activeChatId, onSelectChat, onBlockChat, onDeleteChat }) => {
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
@@ -151,25 +150,43 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
       }, 3000);
   };
 
-  const handleSendMessage = (e?: React.FormEvent, attachment?: Message['attachment']) => {
+  const handleSendMessage = async (e?: React.FormEvent, attachment?: Message['attachment']) => {
     if (e) e.preventDefault();
     if ((!newMessage.trim() && !attachment) || !activeChatId || theyBlockedMe) return;
 
-    const msg: Message = {
-      id: crypto.randomUUID(),
-      senderId: user.id,
-      senderName: user.name,
-      text: newMessage,
-      timestamp: Date.now(),
-      status: 'sent',
-      attachment
-    };
-
-    onSendMessage(activeChatId, msg);
+    const textToSend = newMessage;
     setNewMessage('');
     setTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    updateDoc(doc(db, 'chats', activeChatId), { [`typing.${user.id}`]: false }).catch(() => {});
+
+    const timestamp = Date.now();
+    const msgData: any = {
+      senderId: user.id,
+      senderName: user.name,
+      text: textToSend,
+      timestamp: timestamp,
+      status: 'sent',
+    };
+
+    if (attachment) {
+      msgData.attachment = attachment;
+    }
+
+    try {
+      const messagesRef = collection(db, 'chats', activeChatId, 'messages');
+      await addDoc(messagesRef, msgData);
+
+      const chatRef = doc(db, 'chats', activeChatId);
+      await updateDoc(chatRef, {
+        lastMessage: attachment ? (attachment.type === 'image' ? 'Sent a photo' : 'Sent a file') : textToSend,
+        lastMessageTime: timestamp,
+        deletedIds: [],
+        [`typing.${user.id}`]: false
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+      alert("Failed to send message. Please check your connection.");
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
