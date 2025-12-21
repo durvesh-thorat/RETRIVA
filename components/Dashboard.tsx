@@ -198,7 +198,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
       {/* Hero Section */}
       <section className="relative w-full">
-          <div className="relative rounded-[2rem] bg-gradient-to-br from-[#1e1b4b] via-[#0f172a] to-[#020617] overflow-hidden p-8 md:p-12 lg:p-16 flex flex-col lg:flex-row items-center justify-between gap-12 shadow-2xl border border-white/5">
+          <div className="relative rounded-[2rem] bg-gradient-to-br from-[#1e1b4b] via-[#0f172a] to-[#020617] overflow-hidden p-6 md:p-10 flex flex-col lg:flex-row items-center justify-between gap-8 shadow-2xl border border-white/5">
              
              {/* Background Decor */}
              <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
@@ -207,7 +207,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
              </div>
 
              {/* Left Side */}
-             <div className="relative z-10 w-full max-w-xl space-y-8 text-center lg:text-left">
+             <div className="relative z-10 w-full max-w-xl space-y-6 text-center lg:text-left">
                  {/* Badge */}
                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-indigo-300 backdrop-blur-md mx-auto lg:mx-0">
                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
@@ -215,7 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  </div>
                  
                  {/* Title */}
-                 <h1 className="text-5xl md:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[0.9]">
+                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[0.9]">
                     From Lost <br/>
                     to Retrieved
                  </h1>
@@ -229,7 +229,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  <div className="hidden md:flex flex-col items-center lg:items-start gap-2">
                     <button 
                       onClick={() => onNavigate('FEATURES')}
-                      className="inline-flex items-center gap-3 px-1 py-1 pr-6 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-full transition-all group"
+                      className="inline-flex items-center gap-3 px-1 py-1 pr-6 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-full transition-all duration-300 group hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:border-indigo-500/50"
                     >
                         <div className="w-10 h-10 rounded-full bg-[#282a3e] border border-white/5 flex items-center justify-center group-hover:bg-[#363852] transition-colors">
                             <Cpu className="w-5 h-5 text-indigo-400" />
@@ -246,7 +246,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  {/* Lost Button */}
                  <button 
                    onClick={() => onNavigate('REPORT_LOST')}
-                   className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all shadow-lg hover:shadow-xl hover:border-white/10"
+                   className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:border-orange-500/50 hover:-translate-y-1"
                  >
                      <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">
                          <Search className="w-6 h-6 text-white" />
@@ -261,7 +261,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  {/* Found Button */}
                  <button 
                    onClick={() => onNavigate('REPORT_FOUND')}
-                   className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all shadow-lg hover:shadow-xl hover:border-white/10"
+                   className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(20,184,166,0.4)] hover:border-teal-500/50 hover:-translate-y-1"
                  >
                      <div className="w-12 h-12 bg-teal-500 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-teal-500/20">
                          <Box className="w-6 h-6 text-white" />
@@ -276,7 +276,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                   {/* Mobile Only Under Hood Button */}
                   <button 
                    onClick={() => onNavigate('FEATURES')}
-                   className="md:hidden w-full flex items-center justify-center gap-3 py-4 mt-2 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-xl transition-all group"
+                   className="md:hidden w-full flex items-center justify-center gap-3 py-4 mt-2 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-xl transition-all duration-300 group hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:border-indigo-500/50"
                  >
                      <Cpu className="w-4 h-4 text-indigo-400" />
                      <span className="text-xs font-bold text-white uppercase tracking-wider">Under the Hood</span>
