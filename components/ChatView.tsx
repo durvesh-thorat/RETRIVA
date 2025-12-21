@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chat, User, Message } from '../types';
 import { Send, Search, ArrowLeft, MessageCircle, Check, CheckCheck, Paperclip, File, ShieldBan, ShieldCheck, Lock, Globe, Users, Trash2, Home, X, Pin } from 'lucide-react';
-import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 interface ChatViewProps {
@@ -40,6 +40,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
   const theyBlockedMe = isBlocked && !iBlockedThem;
 
   const otherParticipantId = selectedChat?.participants.find(p => p !== user.id);
+  const isOtherUserTyping = selectedChat?.typing && Object.entries(selectedChat.typing).some(([uid, isTyping]) => uid !== user.id && isTyping);
 
   // 0. Listen to Subcollection Messages (The Fix for 1MB Limit)
   useEffect(() => {
@@ -77,42 +78,58 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
      return combined.sort((a, b) => a.timestamp - b.timestamp);
   }, [selectedChat?.messages, subcollectionMessages]);
 
-  // 1. Mark messages as READ when opening chat (Legacy & New)
+  // 1. Mark messages as READ (Real-time update for subcollection)
   useEffect(() => {
-    if (activeChatId && selectedChat) {
-      // Logic for Legacy Array (Can only read, keeping update for consistency if possible)
-      const hasUnreadLegacy = selectedChat.messages.some(m => m.senderId !== user.id && m.status !== 'read');
-      
-      if (hasUnreadLegacy) {
-         const updatedMessages = selectedChat.messages.map(m => {
-             if (m.senderId !== user.id && m.status !== 'read') {
-                 return { ...m, status: 'read' };
-             }
-             return m;
-         });
-         // Try to update legacy array (might fail if doc full, but less critical than sending)
-         updateDoc(doc(db, 'chats', activeChatId), {
-             messages: updatedMessages
-         }).catch(err => console.warn("Could not mark legacy messages read:", err));
-      }
-    }
-  }, [activeChatId, selectedChat?.messages.length]);
+    if (activeChatId && subcollectionMessages.length > 0) {
+       // Filter messages sent by others that are NOT read
+       const unreadDocs = subcollectionMessages.filter(m => m.senderId !== user.id && m.status !== 'read');
+       
+       if (unreadDocs.length > 0) {
+           const batch = writeBatch(db);
+           unreadDocs.forEach(msg => {
+               // Must have ID to update
+               if (msg.id) {
+                   const docRef = doc(db, 'chats', activeChatId, 'messages', msg.id);
+                   batch.update(docRef, { status: 'read' });
+               }
+           });
+           
+           // Also update legacy messages if any exist
+           if (selectedChat?.messages?.some(m => m.senderId !== user.id && m.status !== 'read')) {
+               const updatedLegacy = selectedChat.messages.map(m => 
+                   (m.senderId !== user.id && m.status !== 'read') ? { ...m, status: 'read' } : m
+               );
+               const chatRef = doc(db, 'chats', activeChatId);
+               batch.update(chatRef, { messages: updatedLegacy, unreadCount: 0 });
+           }
 
-  // 2. Fetch Online Status of Other User
+           batch.commit().catch(e => console.error("Error marking read:", e));
+       }
+    }
+  }, [activeChatId, subcollectionMessages, selectedChat?.messages, user.id]);
+
+  // 2. Fetch Online Status of Other User (Real-time)
   useEffect(() => {
-     if (otherParticipantId) {
-        getDoc(doc(db, 'users', otherParticipantId)).then(snap => {
-            if (snap.exists()) setOtherUserOnline(snap.data().isOnline || false);
-        });
-     }
-  }, [otherParticipantId]);
+     if (!otherParticipantId || isGlobal) return;
+     
+     const userRef = doc(db, 'users', otherParticipantId);
+     const unsubscribe = onSnapshot(userRef, (snap) => {
+        if (snap.exists()) {
+            setOtherUserOnline(snap.data().isOnline || false);
+        } else {
+            setOtherUserOnline(false);
+        }
+     });
+
+     return () => unsubscribe();
+  }, [otherParticipantId, isGlobal]);
 
   // 3. Scroll to bottom
   useEffect(() => {
-    if (allMessages.length > 0) {
+    if (allMessages.length > 0 || isOtherUserTyping) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [allMessages, activeChatId]);
+  }, [allMessages.length, activeChatId, isOtherUserTyping]);
 
   // 4. Handle Typing
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -130,7 +147,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
       typingTimeoutRef.current = setTimeout(() => {
           setTyping(false);
           updateDoc(doc(db, 'chats', activeChatId), { [`typing.${user.id}`]: false }).catch(() => {});
-      }, 2000);
+      }, 3000);
   };
 
   const handleSendMessage = (e?: React.FormEvent, attachment?: Message['attachment']) => {
@@ -150,6 +167,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
     onSendMessage(activeChatId, msg);
     setNewMessage('');
     setTyping(false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     updateDoc(doc(db, 'chats', activeChatId), { [`typing.${user.id}`]: false }).catch(() => {});
   };
 
@@ -291,8 +309,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                           </span>
                        ) : (
                           <>
-                           <span className={`w-2 h-2 rounded-full ${otherUserOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{otherUserOnline ? 'Online' : 'Offline'}</span>
+                           <span className={`w-2 h-2 rounded-full ${otherUserOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}`}></span>
+                           <span className={`text-[10px] font-bold uppercase tracking-wide ${otherUserOnline ? 'text-emerald-500' : 'text-slate-500'}`}>
+                             {otherUserOnline ? 'Online' : 'Offline'}
+                           </span>
                           </>
                        )
                      )}
@@ -330,14 +350,14 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4">
               {allMessages.map((msg, idx) => {
                 const isMe = msg.senderId === user.id;
                 const showSender = isGlobal && !isMe;
                 
                 return (
-                  <div key={msg.id || idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div key={msg.id || idx} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`flex flex-col max-w-[80%] md:max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
                       {showSender && (
                         <span className="text-[10px] font-bold text-slate-400 mb-1 ml-1">{msg.senderName || 'Student'}</span>
                       )}
@@ -356,19 +376,19 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                       )}
                       
                       {msg.text && (
-                         <div className={`px-5 py-3 text-sm font-medium leading-relaxed rounded-[1.25rem] shadow-sm relative ${
+                         <div className={`px-5 py-3 text-sm font-medium leading-relaxed shadow-sm relative break-words ${
                            isMe 
-                             ? (isBlocked ? 'bg-slate-400 text-white rounded-br-sm' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-br-sm shadow-indigo-500/20')
-                             : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-bl-sm'
+                             ? (isBlocked ? 'bg-slate-400 text-white rounded-[1.25rem] rounded-tr-sm' : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-[1.25rem] rounded-tr-sm shadow-indigo-500/20')
+                             : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-[1.25rem] rounded-tl-sm'
                          }`}>
                            {msg.text}
                          </div>
                       )}
                       
-                      <div className="flex items-center gap-1.5 mt-1 px-1">
+                      <div className={`flex items-center gap-1.5 mt-1 px-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                         <span className="text-[9px] font-bold text-slate-400 opacity-80">{formatTime(msg.timestamp)}</span>
                         {isMe && !isGlobal && (
-                             msg.status === 'read' ? <CheckCheck className="w-3 h-3 text-brand-violet" /> : <Check className="w-3 h-3 text-slate-400" />
+                             msg.status === 'read' ? <CheckCheck className="w-3.5 h-3.5 text-brand-violet" /> : <Check className="w-3.5 h-3.5 text-slate-400" />
                         )}
                       </div>
                     </div>
@@ -376,13 +396,13 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                 );
               })}
               
-              {/* Typing Indicator Bubble */}
-              {selectedChat.typing && Object.entries(selectedChat.typing).some(([uid, typing]) => uid !== user.id && typing) && (
-                  <div className="flex justify-start animate-fade-in">
-                      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-[1.25rem] rounded-bl-sm border border-slate-100 dark:border-slate-800 flex gap-1">
-                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
-                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-100"></span>
-                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-200"></span>
+              {/* Typing Indicator Bubble - Better Implementation */}
+              {isOtherUserTyping && (
+                  <div className="flex w-full justify-start animate-fade-in">
+                      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-[1.25rem] rounded-tl-sm border border-slate-100 dark:border-slate-800 flex gap-1.5 items-center shadow-sm">
+                          <span className="w-2 h-2 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce"></span>
+                          <span className="w-2 h-2 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce delay-100"></span>
+                          <span className="w-2 h-2 bg-slate-300 dark:bg-slate-600 rounded-full animate-bounce delay-200"></span>
                       </div>
                   </div>
               )}
