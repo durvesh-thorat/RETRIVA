@@ -208,10 +208,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
            </div>
 
            {/* Content */}
-           <div className="relative z-10 flex flex-col h-full">
+           <div className="relative z-10 flex flex-col h-full text-center lg:text-left">
               {/* Logo Area */}
               <div className="mb-8">
-                <div className="w-16 h-16 mb-4 filter drop-shadow-xl">
+                <div className="w-16 h-16 mb-4 filter drop-shadow-xl mx-auto lg:mx-0">
                    <svg viewBox="0 0 200 200" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <defs>
                         <linearGradient id="pinGradientAuth" x1="100" y1="25" x2="100" y2="190" gradientUnits="userSpaceOnUse">
@@ -246,15 +246,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <h1 className="text-3xl lg:text-4xl font-black tracking-tighter mb-2 leading-tight bg-gradient-to-br from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
                   RETRIVA
                 </h1>
-                <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-sm">
+                <p className="text-sm text-slate-400 font-medium leading-relaxed max-w-sm mx-auto lg:mx-0">
                   The smart way to find what you've lost on campus.
                 </p>
               </div>
               
-              <div className="h-px bg-white/10 w-full mb-6"></div>
+              <div className="h-px bg-white/10 w-full max-w-xs lg:max-w-full mx-auto lg:mx-0 mb-6"></div>
 
               {/* Rich Features List */}
-              <div className="space-y-5 flex-1">
+              <div className="space-y-5 flex-1 w-full max-w-sm lg:max-w-none mx-auto lg:mx-0 text-left">
                  <div className="flex gap-4 group">
                     <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/10 group-hover:border-indigo-500/20 transition-all duration-300">
                       <BrainCircuit className="w-5 h-5 text-indigo-400" />
