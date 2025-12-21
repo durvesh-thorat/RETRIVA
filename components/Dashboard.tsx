@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ItemReport, ReportType, ItemCategory, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap, Cpu } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, Clock, Calendar, ArrowRight, Fingerprint, RefreshCw, Loader2, ScanLine, History, CheckCircle2, Zap, Cpu, AlertCircle, Radar } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -94,10 +94,69 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
   const [isProcessingSearch, setIsProcessingSearch] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ItemReport | null>(null);
   
-  // AI Match Center State
-  const [activeMatchSource, setActiveMatchSource] = useState<ItemReport | null>(null);
-  const [foundMatches, setFoundMatches] = useState<ItemReport[]>([]);
-  const [isScanningMatches, setIsScanningMatches] = useState(false);
+  // AI Match Center State - UPGRADED
+  const [matches, setMatches] = useState<Record<string, ItemReport[]>>({});
+  const [isAutoScanning, setIsAutoScanning] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState<number>(0);
+  
+  // Ref to track if we've done the initial scan
+  const hasInitialScanRun = useRef(false);
+
+  // AUTOMATIC MATCH SCANNING
+  useEffect(() => {
+    const scanAll = async () => {
+      const myOpenReports = reports.filter(r => r.reporterId === user.id && r.status === 'OPEN');
+      
+      // If I have no open reports, clear matches
+      if (myOpenReports.length === 0) {
+          setMatches({});
+          setIsAutoScanning(false);
+          return;
+      }
+
+      setIsAutoScanning(true);
+      const newMatches: Record<string, ItemReport[]> = {};
+      let foundAny = false;
+
+      // Sequential scan to avoid rate limits
+      for (const myItem of myOpenReports) {
+          // Look for opposite type (Lost -> Found, Found -> Lost)
+          const targetType = myItem.type === ReportType.LOST ? ReportType.FOUND : ReportType.LOST;
+          const candidates = reports.filter(r => r.type === targetType && r.status === 'OPEN' && r.reporterId !== user.id);
+          
+          if (candidates.length > 0) {
+               try {
+                  const query = `Title: ${myItem.title}. Desc: ${myItem.description}. Loc: ${myItem.location}`;
+                  const results = await findPotentialMatches({ description: query, imageUrls: myItem.imageUrls }, candidates);
+                  
+                  if (results.length > 0) {
+                      const matchIds = results.map(r => r.id);
+                      newMatches[myItem.id] = candidates.filter(c => matchIds.includes(c.id));
+                      foundAny = true;
+                  }
+               } catch (e) {
+                   console.error("Auto scan error for", myItem.title, e);
+               }
+          }
+      }
+      
+      setMatches(newMatches);
+      setIsAutoScanning(false);
+      setLastScanTime(Date.now());
+    };
+
+    // Debounce scan logic - Trigger when reports length changes or 5s after last scan
+    // This simple check ensures we don't spam, but we do react to updates
+    const now = Date.now();
+    if (!hasInitialScanRun.current || (now - lastScanTime > 5000)) {
+       const timer = setTimeout(() => {
+          scanAll();
+          hasInitialScanRun.current = true;
+       }, 1000);
+       return () => clearTimeout(timer);
+    }
+
+  }, [reports.length, user.id]); // Re-run mainly when reports count changes
 
   const filteredReports = useMemo(() => {
     // Filter by Type AND Status
@@ -123,36 +182,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
     }
   };
 
-  const handleManualScan = async (report: ItemReport) => {
-    // 1. Close detail view
-    setSelectedReport(null);
-    // 2. Set Active Source
-    setActiveMatchSource(report);
-    setFoundMatches([]);
-    setIsScanningMatches(true);
-
-    // 3. Scroll to Match Center
-    setTimeout(() => {
-      document.getElementById('match-center')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-
-    // 4. Perform AI Scan
-    try {
-      const targetType = report.type === ReportType.LOST ? ReportType.FOUND : ReportType.LOST;
-      const candidates = reports.filter(r => r.type === targetType && r.status === 'OPEN');
-      
-      if (candidates.length > 0) {
-        const query = `Title: ${report.title}. Desc: ${report.description}. Loc: ${report.location}`;
-        const results = await findPotentialMatches({ description: query, imageUrls: report.imageUrls }, candidates);
-        const matchIds = results.map(r => r.id);
-        setFoundMatches(candidates.filter(c => matchIds.includes(c.id)));
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsScanningMatches(false);
-    }
-  };
+  const hasMatches = Object.keys(matches).length > 0;
+  const myItemsCount = reports.filter(r => r.reporterId === user.id && r.status === 'OPEN').length;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
@@ -164,12 +195,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           onEdit={(r) => { onEditReport(r); setSelectedReport(null); }}
           onDelete={(id) => { onDeleteReport(id); setSelectedReport(null); }}
           onNavigateToChat={(report) => { onChatStart(report); setSelectedReport(null); }}
-          onViewMatch={(r) => handleManualScan(r)}
+          onViewMatch={(r) => { /* Auto-scan already handles this, but we can scroll to top */ 
+             document.getElementById('match-center')?.scrollIntoView({ behavior: 'smooth' });
+             setSelectedReport(null);
+          }}
         />
       )}
 
       {/* Hero Section */}
-      <section className="relative mb-12">
+      <section className="relative mb-8">
           {/* Foundation Layer */}
           <div className="relative rounded-[2rem] bg-slate-950 overflow-hidden shadow-2xl border border-white/10 py-8 px-6 lg:py-16 lg:px-20 min-h-[320px] flex items-center group">
               
@@ -257,60 +291,114 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           </div>
       </section>
 
-      {/* AI Match Center */}
-      {(activeMatchSource || isScanningMatches) && (
-        <div id="match-center" className="animate-fade-in space-y-5 scroll-mt-24 rounded-[2.5rem] mb-12">
+      {/* ALWAYS ACTIVE AI MATCH CENTER */}
+      <div id="match-center" className="animate-fade-in space-y-4 scroll-mt-24 mb-12">
            <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-brand-violet rounded-lg shadow-lg shadow-brand-violet/20 animate-pulse-soft">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div className="relative">
+                   <div className="p-2 bg-gradient-to-br from-brand-violet to-purple-600 rounded-xl shadow-lg shadow-brand-violet/20">
+                      <Radar className={`w-5 h-5 text-white ${isAutoScanning ? 'animate-spin' : ''}`} />
+                   </div>
+                   {isAutoScanning && <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span></span>}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">AI Match Center</h2>
-                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">
-                    Source: <span className="text-brand-violet">{activeMatchSource?.title}</span>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Live Match Center</h2>
+                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+                    {isAutoScanning ? 'Scanning Database...' : `Monitoring ${myItemsCount} Active Reports`}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setActiveMatchSource(null)} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close Scanner</button>
-           </div>
-
-           <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden p-6 min-h-[300px]">
-              {isScanningMatches ? (
-                 <div className="flex flex-col items-center justify-center h-64 text-center">
-                    <Loader2 className="w-10 h-10 text-brand-violet animate-spin mb-4" />
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Scanning Database</h3>
-                    <p className="text-sm text-slate-500">Analyzing visual features and descriptions...</p>
-                 </div>
-              ) : foundMatches.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                   {foundMatches.map(match => (
-                     <div key={match.id} className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-brand-violet/50 hover:shadow-2xl transition-all cursor-pointer overflow-hidden flex flex-col h-48" onClick={() => onCompare(activeMatchSource!, match)}>
-                         <div className="h-28 bg-slate-100 dark:bg-slate-900 relative">
-                             {match.imageUrls[0] && <img src={match.imageUrls[0]} className="w-full h-full object-cover" />}
-                             <div className="absolute inset-0 bg-brand-violet/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <ScanLine className="w-8 h-8 text-white animate-pulse" />
-                             </div>
-                         </div>
-                         <div className="p-3">
-                             <h4 className="font-bold text-slate-900 dark:text-white text-xs line-clamp-1 mb-1">{match.title}</h4>
-                             <button className="w-full py-1.5 bg-slate-100 dark:bg-slate-700/50 text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 rounded-lg group-hover:bg-brand-violet group-hover:text-white transition-colors">Compare Items</button>
-                         </div>
-                     </div>
-                   ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-center">
-                   <Box className="w-12 h-12 text-slate-300 mb-4" />
-                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">No Matches Found</h3>
-                   <p className="text-sm text-slate-500 max-w-xs mx-auto mt-2">
-                     We couldn't find any items that match yours right now. We'll notify you if something comes up.
-                   </p>
+              
+              {hasMatches && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-full">
+                   <Sparkles className="w-3 h-3 text-emerald-500" />
+                   <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Matches Found</span>
                 </div>
               )}
            </div>
-        </div>
-      )}
+
+           <div className={`rounded-[2rem] border transition-all overflow-hidden relative min-h-[160px] ${hasMatches ? 'bg-indigo-50/50 dark:bg-slate-900/50 border-indigo-100 dark:border-indigo-900/30' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
+              
+              {/* Background pattern */}
+              <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(rgba(99,102,241,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.5)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+
+              <div className="p-6 relative z-10">
+                 {isAutoScanning && !hasMatches ? (
+                    <div className="flex flex-col items-center justify-center py-10">
+                       <Loader2 className="w-8 h-8 text-brand-violet animate-spin mb-3" />
+                       <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Scanning for matches...</p>
+                    </div>
+                 ) : hasMatches ? (
+                    <div className="space-y-6">
+                       {Object.entries(matches).map(([sourceId, matchedItems]) => {
+                          const sourceItem = reports.find(r => r.id === sourceId);
+                          if (!sourceItem) return null;
+
+                          return (
+                             <div key={sourceId} className="animate-slide-up">
+                                <div className="flex items-center gap-2 mb-3">
+                                   <div className="w-1.5 h-1.5 rounded-full bg-brand-violet"></div>
+                                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                      For your <span className="text-slate-900 dark:text-white">{sourceItem.title}</span>
+                                   </h3>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                   {matchedItems.map(match => (
+                                      <div key={match.id} onClick={() => onCompare(sourceItem, match)} className="group bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-brand-violet hover:shadow-xl transition-all cursor-pointer flex gap-4">
+                                         <div className="w-20 h-20 rounded-xl bg-slate-100 dark:bg-slate-900 overflow-hidden shrink-0 relative">
+                                            {match.imageUrls[0] && <img src={match.imageUrls[0]} className="w-full h-full object-cover" />}
+                                            <div className="absolute inset-0 bg-brand-violet/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                               <ScanLine className="w-6 h-6 text-white" />
+                                            </div>
+                                         </div>
+                                         <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                            <div className="flex justify-between items-start">
+                                               <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate pr-2">{match.title}</h4>
+                                               <span className="text-[10px] text-slate-400 whitespace-nowrap">{match.date}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 line-clamp-1 mb-2">{match.description}</p>
+                                            <button className="text-[10px] font-black uppercase tracking-widest text-brand-violet bg-indigo-50 dark:bg-indigo-900/30 py-1.5 rounded-lg hover:bg-brand-violet hover:text-white transition-colors">
+                                               Compare & Verify
+                                            </button>
+                                         </div>
+                                      </div>
+                                   ))}
+                                </div>
+                             </div>
+                          );
+                       })}
+                    </div>
+                 ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                       {myItemsCount > 0 ? (
+                          <>
+                             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                                <CheckCircle2 className="w-8 h-8 text-slate-400" />
+                             </div>
+                             <h3 className="text-base font-bold text-slate-900 dark:text-white">All Clear</h3>
+                             <p className="text-sm text-slate-500 max-w-xs mx-auto mt-1">
+                                No matching items found in the database yet. We'll alert you automatically when something appears.
+                             </p>
+                          </>
+                       ) : (
+                          <>
+                             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                                <AlertCircle className="w-8 h-8 text-slate-400" />
+                             </div>
+                             <h3 className="text-base font-bold text-slate-900 dark:text-white">Match Center Inactive</h3>
+                             <p className="text-sm text-slate-500 max-w-xs mx-auto mt-1 mb-4">
+                                Report a lost or found item to activate the AI matching engine.
+                             </p>
+                             <button onClick={() => onNavigate('REPORT_LOST')} className="text-xs font-bold text-brand-violet hover:underline">
+                                Create a Report
+                             </button>
+                          </>
+                       )}
+                    </div>
+                 )}
+              </div>
+           </div>
+      </div>
 
       {/* Main Content Feed */}
       <section className="space-y-6">
