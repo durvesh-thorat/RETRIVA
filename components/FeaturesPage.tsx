@@ -1,10 +1,37 @@
 
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, BrainCircuit, ShieldCheck, Zap, Database, Eye, Fingerprint, Lock, ScanFace, Code2, Server, Cloud, Sparkles, Search, AlertTriangle, CheckCircle2, Siren, Box } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BrainCircuit, ShieldCheck, Zap, Database, Eye, Fingerprint, Lock, ScanFace, Code2, Server, Cloud, Sparkles, Search, AlertTriangle, CheckCircle2, Siren, Box, Image as ImageIcon, Flame } from 'lucide-react';
 
 interface FeaturesPageProps {
   onBack: () => void;
 }
+
+// --- LOGO COMPONENTS FOR BACKGROUNDS ---
+
+const LogoGemini = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M11.05 1.76a1.002 1.002 0 0 1 1.9 0l1.45 4.35a8.002 8.002 0 0 0 5.09 5.09l4.35 1.45a1.002 1.002 0 0 1 0 1.9l-4.35 1.45a8.002 8.002 0 0 0-5.09 5.09l-1.45 4.35a1.002 1.002 0 0 1-1.9 0l-1.45-4.35a8.002 8.002 0 0 0-5.09-5.09L.4 13.55a1.002 1.002 0 0 1 0-1.9l4.35-1.45a8.002 8.002 0 0 0 5.09-5.09l1.45-4.35Z" />
+  </svg>
+);
+
+const LogoFirebase = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M4.63 2.53L1.58 13.06a1.27 1.27 0 00.35 1.34l7.98 7.37c.75.69 1.9.69 2.65 0l7.35-6.79.03-.03 2.45-9.15a.65.65 0 00-.97-.68L14.7 9.87l-2.73-5.46a.71.71 0 00-1.31.06L7.15 13.6 4.63 2.53z" />
+  </svg>
+);
+
+const LogoCloudinary = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
+     <path d="M18 12c0-3.31-2.69-6-6-6s-6 2.69-6 6c0 1.26.39 2.43 1.06 3.39L12 12l4.94 3.39C17.61 14.43 18 13.26 18 12z" opacity="0.5"/>
+  </svg>
+);
+
+const LogoAIStudio = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5 10 5 10-5-5-2.5-5 2.5z"/>
+  </svg>
+);
 
 // --- ANIMATED DEMO COMPONENTS ---
 
@@ -29,9 +56,9 @@ const VisionDemo = () => {
        {/* Image Side */}
        <div className="w-1/2 relative bg-slate-800 overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1602143407151-0111d25649e8?q=80&w=800&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1544003427-44026dc6a070?q=80&w=800&auto=format&fit=crop" 
             className="w-full h-full object-cover opacity-80" 
-            alt="Lost Bottle"
+            alt="Blue Bottle"
           />
           {/* Scanning Line */}
           <div 
@@ -211,15 +238,26 @@ const SecurityDemo = () => {
 
 // --- MAIN PAGE ---
 
-const TechCard = ({ icon: Icon, title, desc, color }: { icon: any, title: string, desc: string, color: string }) => (
-  <div className="group relative p-6 bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 transition-all duration-300">
-     <div className={`absolute top-0 right-0 p-20 opacity-10 bg-gradient-to-br ${color} blur-[60px] group-hover:opacity-20 transition-opacity`}></div>
-     <div className="relative z-10">
-        <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+const TechCard = ({ icon: Icon, title, desc, color, logo: Logo }: { icon: any, title: string, desc: string, color: string, logo: React.ComponentType<{ className?: string }> }) => (
+  <div className="group relative p-6 bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:bg-white/10 hover:border-white/20 transition-all duration-500 hover:-translate-y-1">
+     
+     {/* Ambient Glow from Color */}
+     <div className={`absolute top-0 right-0 p-24 opacity-0 group-hover:opacity-20 bg-gradient-to-br ${color} blur-[80px] transition-opacity duration-700`}></div>
+     
+     {/* Background Animated Logo */}
+     <div className={`absolute -right-4 -bottom-4 text-white opacity-[0.03] group-hover:opacity-[0.15] transition-all duration-700 transform group-hover:scale-110 group-hover:rotate-6 z-0 pointer-events-none`}>
+       <Logo className={`w-40 h-40 ${color.includes('orange') ? 'text-orange-500' : color.includes('cyan') ? 'text-cyan-500' : color.includes('emerald') ? 'text-emerald-500' : 'text-indigo-500'}`} />
+     </div>
+
+     {/* Flash Effect on Hover */}
+     <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:animate-pulse z-10 pointer-events-none"></div>
+
+     <div className="relative z-20">
+        <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300 shadow-lg">
            <Icon className="w-6 h-6 text-white" />
         </div>
-        <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-        <p className="text-sm text-slate-400 leading-relaxed font-medium">{desc}</p>
+        <h3 className="text-lg font-bold text-white mb-2 tracking-tight">{title}</h3>
+        <p className="text-sm text-slate-400 leading-relaxed font-medium group-hover:text-slate-300 transition-colors">{desc}</p>
      </div>
   </div>
 );
@@ -308,32 +346,42 @@ const FeaturesPage: React.FC<FeaturesPageProps> = ({ onBack }) => {
              </p>
           </header>
 
-          {/* Core Tech Grid */}
+          {/* Core Tech Grid - REPLACED CONTENT */}
           <section className="mb-32">
+             <div className="flex items-center gap-3 mb-8 px-2">
+               <div className="h-px bg-white/10 flex-1"></div>
+               <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Built With</span>
+               <div className="h-px bg-white/10 flex-1"></div>
+             </div>
+
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <TechCard 
                   icon={BrainCircuit}
-                  title="Gemini 3.0"
-                  desc="Latest multimodal reasoning model for Vision and Semantic tasks."
-                  color="from-blue-600 to-cyan-600"
+                  logo={LogoGemini}
+                  title="Google Gemini 3.0"
+                  desc="Multimodal reasoning model powering our vision analysis and semantic search engine."
+                  color="from-blue-600 to-indigo-600"
                 />
                 <TechCard 
-                  icon={Database}
-                  title="Vector Search"
-                  desc="High-dimensional embedding comparison for fuzzy matching."
-                  color="from-purple-600 to-pink-600"
+                  icon={Flame}
+                  logo={LogoFirebase}
+                  title="Google Firebase"
+                  desc="Real-time NoSQL database and secure authentication infrastructure."
+                  color="from-orange-500 to-amber-500"
                 />
                 <TechCard 
-                  icon={ShieldCheck}
-                  title="Auto-Moderation"
-                  desc="Real-time scanning for PII, gore, and spam content."
-                  color="from-emerald-600 to-teal-600"
+                  icon={ImageIcon}
+                  logo={LogoCloudinary}
+                  title="Cloudinary"
+                  desc="High-performance image optimization and delivery network."
+                  color="from-blue-500 to-cyan-500"
                 />
                 <TechCard 
-                  icon={Cloud}
-                  title="Real-time Sync"
-                  desc="Instant updates across all devices via Firebase Firestore."
-                  color="from-orange-600 to-red-600"
+                  icon={Sparkles}
+                  logo={LogoAIStudio}
+                  title="Google AI Studio"
+                  desc="Prompt engineering and model tuning for maximum accuracy."
+                  color="from-purple-600 to-fuchsia-600"
                 />
              </div>
           </section>
