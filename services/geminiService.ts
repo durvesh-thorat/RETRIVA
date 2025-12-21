@@ -1,577 +1,219 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 
-export interface ComparisonResult {
-  confidence: number;
-  explanation: string;
-  similarities: string[];
-  differences: string[];
+import React, { useState, useRef, useEffect } from 'react';
+import { User } from '../types';
+import { User as UserIcon, Mail, Building, Save, Camera, ArrowLeft, Loader2, Trash2, Edit3, AlertTriangle, LogOut } from 'lucide-react';
+import { db, auth } from '../services/firebase';
+import { updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { uploadImage } from '../services/cloudinary';
+
+interface ProfileProps {
+  user: User;
+  onUpdate: (updatedUser: User) => void;
+  onBack: () => void;
+  onDeleteAccount: () => void;
+  onLogout: () => void;
 }
 
-// Helper: Sleep function for backoff
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccount, onLogout }) => {
+  const [name, setName] = useState(user.name);
+  const [department, setDepartment] = useState(user.department || '');
+  const [avatar, setAvatar] = useState(user.avatar || '');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-// Helper to safely get the API Key with priority for VITE_ prefix
-const getApiKey = (provider: 'GOOGLE' | 'GROQ'): string | undefined => {
-  let key: string | undefined = undefined;
-  const targetKey = provider === 'GOOGLE' ? 'API_KEY' : 'GROQ_API_KEY';
-  const viteKey = `VITE_${targetKey}`;
+  useEffect(() => {
+    setAvatarError(false);
+  }, [avatar]);
 
-  // 1. Try Vite standard (import.meta.env)
-  try {
-    // @ts-ignore
-    if (import.meta.env) {
-      // @ts-ignore
-      key = import.meta.env[viteKey] || import.meta.env[targetKey];
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+         setAvatar(reader.result as string); // Preview with Base64
+         setSelectedFile(file); // Store file for upload
+         setAvatarError(false);
+      };
+      reader.readAsDataURL(file);
     }
-  } catch (e) {}
+  };
 
-  // 2. Try process.env (Node/Webpack/Vercel Polyfills)
-  if (!key) {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    
     try {
-      if (typeof process !== 'undefined' && process.env) {
-        key = process.env[viteKey] || process.env[targetKey];
+      // 1. Upload new Avatar if selected
+      let finalAvatarUrl = avatar;
+      if (selectedFile) {
+         finalAvatarUrl = await uploadImage(selectedFile);
       }
-    } catch (e) {}
-  }
 
-  return key;
-};
+      // 2. Update Firebase Auth Profile (Display Name ONLY)
+      if (auth.currentUser) {
+         await updateProfile(auth.currentUser, { 
+            displayName: name
+         });
+      }
 
-const getAI = () => {
-  const apiKey = getApiKey('GOOGLE');
-  if (!apiKey) {
-    console.error("DEBUG: Google API Key missing.");
-    throw new Error("MISSING_GOOGLE_KEY");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+      // 3. Update Firestore Document
+      const userRef = doc(db, 'users', user.id);
+      await setDoc(userRef, {
+         name,
+         department,
+         avatar: finalAvatarUrl
+      }, { merge: true });
 
-// Model Cascade List: Primary (Google) -> Fallbacks
-const GOOGLE_CASCADE = [
-  'gemini-3-flash-preview',
-  'gemini-flash-latest',
-  'gemini-flash-lite-latest',
-  'gemini-3-pro-preview'
-];
-
-// Fallback Model (Groq)
-// UPDATED: Replaced decommissioned vision model with recommended scout model.
-const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'; 
-
-/**
- * Robust JSON Cleaner: Extracts the first valid JSON object from a string.
- */
-const cleanJSON = (text: string): string => {
-  if (!text) return "{}";
-  
-  // 1. Remove Markdown code blocks
-  let cleaned = text.replace(/```json/g, "").replace(/```/g, "");
-  
-  // 2. Find the first '{' and the last '}'
-  const firstOpen = cleaned.indexOf('{');
-  const lastClose = cleaned.lastIndexOf('}');
-  
-  if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
-    cleaned = cleaned.substring(firstOpen, lastClose + 1);
-  } else {
-    return "{}";
-  }
-
-  return cleaned.trim();
-};
-
-/**
- * ADAPTER: Converts Gemini Input Format to Groq (OpenAI-compat) Format
- * NOTE: Since we are using a Text-Only fallback logic for stability, we must convert/strip images to text notes.
- * If the new model supports vision, this can be updated to send image_url payloads.
- */
-const convertGeminiToGroq = (contents: any) => {
-  const parts = contents.parts || [];
-  let fullText = "";
-
-  parts.forEach((part: any) => {
-    if (part.text) {
-      fullText += part.text + "\n";
-    } else if (part.inlineData) {
-      // We add a placeholder so the model knows an image was there.
-      fullText += "\n[System Note: The user uploaded an image. Please infer details from the user's text description if available, or ask for a text description as direct image processing is currently bridged to text-only fallback.]\n";
+      // 4. Update Local State
+      onUpdate({ ...user, name, department, avatar: finalAvatarUrl });
+      setSelectedFile(null); // Reset file selection
+    } catch (e) {
+      console.error("Error saving profile:", e);
+      alert("Failed to save changes. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
-  });
+  };
 
-  return [
-    {
-      role: "user",
-      content: fullText.trim()
-    }
-  ];
+  return (
+    <div className="max-w-3xl mx-auto pb-24 animate-in slide-in-from-bottom-4 duration-500">
+      <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-white mb-6 font-bold text-xs uppercase tracking-widest transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Back to Home
+      </button>
+
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden">
+        {/* Header Banner - Smart/Deep Gradient */}
+        <div className="h-40 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 relative overflow-hidden">
+           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+        </div>
+
+        <div className="px-8 pb-8 relative">
+           {/* Avatar Section */}
+           <div className="relative -mt-16 mb-6 flex flex-col items-center sm:items-start sm:flex-row sm:justify-between">
+              <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                 <div className="w-32 h-32 rounded-full bg-white dark:bg-slate-900 border-[6px] border-white dark:border-slate-900 shadow-xl overflow-hidden flex items-center justify-center relative">
+                   {avatar && !avatarError ? (
+                     <img src={avatar} className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
+                   ) : (
+                     <UserIcon className="w-12 h-12 text-slate-300 dark:text-slate-600" />
+                   )}
+                   {/* Overlay */}
+                   <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-[1px]">
+                      <Camera className="w-8 h-8 text-white mb-1" />
+                      <span className="text-[9px] font-bold text-white uppercase tracking-wider">Change</span>
+                   </div>
+                 </div>
+                 {/* Status Indicator */}
+                 <div className="absolute bottom-2 right-2 w-6 h-6 bg-emerald-500 rounded-full border-4 border-white dark:border-slate-900 z-10"></div>
+                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+              </div>
+
+              {/* Remove Photo Button (Subtle) */}
+              {avatar && (
+                 <button 
+                   type="button" 
+                   onClick={() => { setAvatar(''); setSelectedFile(null); }} 
+                   className="mt-4 sm:mt-0 sm:self-end px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors flex items-center gap-1.5"
+                 >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove Photo
+                 </button>
+              )}
+           </div>
+
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-8">
+              <div>
+                <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-1">{name}</h1>
+                <p className="text-slate-500 text-sm font-medium flex items-center gap-2">
+                   {user.studentId ? `Student ID: ${user.studentId}` : 'No Student ID Set'}
+                   <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+                   <span className="text-indigo-600 dark:text-indigo-400">{user.email}</span>
+                </p>
+              </div>
+           </div>
+
+           <form onSubmit={handleSubmit} className="space-y-6">
+              
+              <div className="grid grid-cols-1 gap-6">
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Full Name</label>
+                    <div className="relative">
+                       <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full pl-4 pr-10 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                       <Edit3 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                    </div>
+                 </div>
+                 
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Major / Department</label>
+                    <div className="relative">
+                       <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                       <input type="text" value={department} onChange={e => setDepartment(e.target.value)} placeholder="e.g. Computer Science" className="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    </div>
+                 </div>
+
+                 <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Email Address</label>
+                    <div className="relative">
+                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                       <input type="email" value={user.email} disabled className="w-full pl-11 pr-4 py-3.5 bg-slate-100 dark:bg-slate-800/30 border border-transparent rounded-xl text-sm font-semibold text-slate-500 cursor-not-allowed" />
+                    </div>
+                    <p className="text-[10px] text-slate-400 ml-1">Email address cannot be changed as it is linked to your university ID.</p>
+                 </div>
+              </div>
+
+              {/* Form Footer Action */}
+              <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                 <button type="submit" disabled={isSaving} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center gap-2 hover:shadow-lg hover:shadow-indigo-500/30 transition-all text-sm transform active:scale-95 disabled:opacity-70 disabled:transform-none">
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save Changes
+                 </button>
+              </div>
+
+           </form>
+           
+           {/* Account Actions */}
+           <div className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800">
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                   <AlertTriangle className="w-4 h-4" /> Account Actions
+               </h3>
+               
+               <div className="space-y-4">
+                  {/* Logout Row */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800">
+                     <div>
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm">Sign Out</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Securely log out of your account on this device.</p>
+                     </div>
+                     <button 
+                       onClick={onLogout}
+                       className="px-5 py-2.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-2"
+                     >
+                        <LogOut className="w-4 h-4" /> Sign Out
+                     </button>
+                  </div>
+
+                  {/* Delete Account Row */}
+                  <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
+                      <div>
+                          <h4 className="font-bold text-red-900 dark:text-red-200 text-sm">Delete Account</h4>
+                          <p className="text-xs text-red-700/70 dark:text-red-300/60 mt-0.5">Permanently remove your profile and data.</p>
+                      </div>
+                      <button 
+                        onClick={onDeleteAccount}
+                        className="px-5 py-2.5 bg-white/50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                      >
+                          Delete
+                      </button>
+                  </div>
+               </div>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
-/**
- * Helper to call Groq API via Fetch (Removes SDK dependency to fix build)
- */
-const callGroqAPI = async (messages: any[], jsonMode: boolean = false) => {
-  const apiKey = getApiKey('GROQ');
-  if (!apiKey) throw new Error("Missing Groq API Key");
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages,
-      model: GROQ_MODEL,
-      temperature: 0.2,
-      max_tokens: 1024,
-      response_format: jsonMode ? { type: "json_object" } : { type: "text" }
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API Error ${response.status}: ${errText}`);
-  }
-
-  return await response.json();
-};
-
-/**
- * DIAGNOSTIC TOOL: Test Groq Connection explicitly
- */
-export const testGroqConnection = async (): Promise<{ success: boolean; message: string }> => {
-  const apiKey = getApiKey('GROQ');
-  if (!apiKey) {
-    return { success: false, message: "❌ Groq API Key (VITE_GROQ_API_KEY) is missing from environment variables." };
-  }
-
-  try {
-    const start = Date.now();
-    await callGroqAPI([{ role: "user", content: "ping" }], false);
-    const latency = Date.now() - start;
-    return { success: true, message: `✅ Groq Connected! Model: ${GROQ_MODEL} (Latency: ${latency}ms)` };
-  } catch (e: any) {
-    console.error("Groq Test Failed:", e);
-    return { success: false, message: `❌ Groq Failed: ${e.message || "Unknown Error"}` };
-  }
-};
-
-const generateWithCascade = async (
-  params: any
-): Promise<{ text: string }> => {
-  let lastError: any;
-  
-  // ---------------------------------------------------------
-  // 1. TRY GOOGLE GEMINI MODELS (PRIMARY)
-  // ---------------------------------------------------------
-  try {
-    const ai = getAI();
-    
-    for (const modelName of GOOGLE_CASCADE) {
-      // Retry Logic for Rate Limits
-      let attempts = 0;
-      const MAX_ATTEMPTS = 3;
-
-      while (attempts < MAX_ATTEMPTS) {
-        try {
-          const response = await ai.models.generateContent({
-            ...params,
-            model: modelName,
-          });
-          
-          // Return normalized object matching what the app expects
-          return { text: response.text || "" };
-
-        } catch (error: any) {
-          // If it's a content blocked error, don't retry, just return empty
-          if (error.message?.includes("SAFETY")) throw error;
-          
-          const isRateLimit = error.message?.includes("429") || error.status === 429 || error.message?.includes("quota") || error.message?.includes("RESOURCE_EXHAUSTED");
-          
-          if (isRateLimit) {
-             attempts++;
-             console.warn(`Gemini ${modelName} Rate Limited (429). Attempt ${attempts}/${MAX_ATTEMPTS}.`);
-             
-             // If we haven't exhausted retries, wait and continue loop
-             if (attempts < MAX_ATTEMPTS) {
-                // Exponential Backoff: 2s, 4s, 8s
-                const waitTime = 2000 * Math.pow(2, attempts - 1);
-                await sleep(waitTime);
-                continue; 
-             }
-             
-             // If retries exhausted for this model, we break the inner loop 
-             // and let the outer loop try the next model in the cascade
-             lastError = error;
-             break;
-          } else {
-             // Non-rate limit error (e.g. 500, 400), try next model immediately
-             console.warn(`Gemini ${modelName} failed.`, error.message);
-             lastError = error;
-             break; 
-          }
-        }
-      }
-    }
-  } catch (e: any) {
-    if (e.message === 'MISSING_GOOGLE_KEY') lastError = e;
-  }
-
-  // ---------------------------------------------------------
-  // 2. FALLBACK TO GROQ
-  // ---------------------------------------------------------
-  console.warn("Gemini exhausted/failed. Switching to Groq fallback...");
-  
-  if (getApiKey('GROQ')) {
-    try {
-      const messages = convertGeminiToGroq(params.contents);
-      const isJson = params.config?.responseMimeType === 'application/json';
-      
-      const completion = await callGroqAPI(messages, isJson);
-
-      console.info("%c✅ FALLBACK SUCCESS: Groq generated response.", "color: #00ff00; font-weight: bold; font-size: 12px;");
-
-      // DISPATCH EVENT FOR UI TOAST
-      if (typeof window !== 'undefined') {
-         // @ts-ignore
-         window.dispatchEvent(new CustomEvent('retriva-toast', { 
-            detail: { message: 'Gemini busy. Switched to backup AI (Groq).', type: 'info' } 
-         }));
-      }
-
-      const text = completion.choices[0]?.message?.content || "";
-      return { text };
-
-    } catch (groqError: any) {
-      console.error("Groq Fallback failed:", groqError);
-      // Keep the original Gemini error as the primary reason for failure if Groq also fails
-    }
-  } else {
-    console.warn("Skipping Groq: No VITE_GROQ_API_KEY found.");
-  }
-
-  console.error("All AI models failed.");
-  throw lastError || new Error("Model cascade exhausted.");
-};
-
-export const instantImageCheck = async (base64Image: string): Promise<{ 
-  faceStatus: 'NONE' | 'ACCIDENTAL' | 'PRANK';
-  isPrank: boolean;
-  violationType: 'GORE' | 'ANIMAL' | 'HUMAN' | 'NONE';
-  reason: string;
-}> => {
-  try {
-    const base64Data = base64Image.split(',')[1] || base64Image;
-    
-    const response = await generateWithCascade({
-      contents: {
-        parts: [
-          { text: `
-            SYSTEM: Security Scan.
-            Analyze image for specific violations:
-            1. GORE/VIOLENCE
-            2. NUDITY
-            3. SELFIE/FACES (Privacy risk)
-            
-            Return strictly JSON:
-            {
-              "faceStatus": "NONE" | "ACCIDENTAL" | "PRANK",
-              "violationType": "GORE" | "ANIMAL" | "HUMAN" | "NONE",
-              "isPrank": boolean,
-              "reason": "string"
-            }
-          ` },
-          { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
-    if (e.message === "MISSING_GOOGLE_KEY") {
-      console.warn("AI Security Scan Skipped: API Key missing.");
-    } else {
-      console.error("Instant check failed", e);
-    }
-    return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
-  }
-};
-
-export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
-  try {
-    const base64Data = base64Image.split(',')[1] || base64Image;
-    const response = await generateWithCascade({
-      contents: {
-        parts: [
-          { text: `
-            Analyze this image for privacy protection.
-            Identify bounding boxes for:
-            1. Human Faces
-            2. Identity Documents (Driver Licenses, Student IDs, Passports)
-            3. Credit/Debit Cards
-            4. Papers containing visible PII (names, phone numbers, addresses)
-
-            Return strictly JSON:
-            {
-              "regions": [
-                 [ymin, xmin, ymax, xmax], // 0 to 1000 scale integers
-                 ...
-              ]
-            }
-            If no sensitive content, return { "regions": [] }.
-            Use 1000 as the scale (e.g. 500 = 50%).
-          ` },
-          { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const data = JSON.parse(text);
-    return data.regions || [];
-  } catch (e) {
-    console.error("Redaction check failed", e);
-    return [];
-  }
-};
-
-export const extractVisualDetails = async (base64Image: string): Promise<{
-  title: string;
-  category: ItemCategory;
-  tags: string[];
-  color: string;
-  brand: string;
-  condition: string;
-  distinguishingFeatures: string[];
-}> => {
-  try {
-    const base64Data = base64Image.split(',')[1] || base64Image;
-    const response = await generateWithCascade({
-      contents: {
-        parts: [
-          { text: `
-            Analyze this image for a Lost & Found report.
-            Extract factual visual details.
-            
-            Return JSON:
-            {
-              "title": "Concise Item Name (e.g. Silver Dell XPS 13)",
-              "category": "One of: Electronics, Stationery, Clothing, Accessories, ID Cards, Books, Other",
-              "tags": ["tag1", "tag2", "tag3"],
-              "color": "Primary Color",
-              "brand": "Brand Name or Unknown",
-              "condition": "Visual condition (e.g. Scratched, New, Worn)",
-              "distinguishingFeatures": ["feature1", "feature2"]
-            }
-          `},
-          { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e) {
-    console.error("Autofill failed", e);
-    return { 
-      title: "", category: ItemCategory.OTHER, tags: [], 
-      color: "", brand: "", condition: "", distinguishingFeatures: [] 
-    };
-  }
-};
-
-export const mergeDescriptions = async (
-  userContext: string, 
-  visualData: any
-): Promise<string> => {
-  try {
-    const response = await generateWithCascade({
-      contents: {
-        parts: [{ text: `
-          Task: Create a comprehensive "3D Description" for a lost item.
-          
-          Input 1 (Visual Facts from AI): ${JSON.stringify(visualData)}
-          Input 2 (User Context): "${userContext}"
-          
-          Instructions:
-          - Combine the specific visual details (scratches, brand, color) with the user's story (where lost, when).
-          - Write in natural, helpful language for a lost & found post.
-          - Keep it under 300 characters but very descriptive.
-          - Do NOT repeat "AI detected". Just describe the item.
-        `}]
-      }
-    });
-    return response.text || userContext;
-  } catch (e) {
-    return userContext;
-  }
-};
-
-export const analyzeItemDescription = async (
-  description: string,
-  base64Images: string[] = [],
-  title: string = ""
-): Promise<GeminiAnalysisResult> => {
-  try {
-    const promptText = `
-      Task: Enhance description and validate content.
-      Title: "${title}"
-      Raw Input: "${description}"
-      
-      Instructions:
-      1. Correct grammar and clarity.
-      2. Extract Item Category (Electronics, Clothing, etc).
-      3. Identify potential Policy Violations (Drugs, Weapons, Spam).
-      
-      Return strictly JSON matching this schema:
-      {
-        "isViolating": boolean,
-        "violationType": "GORE" | "ANIMAL" | "HUMAN" | "IRRELEVANT" | "INCONSISTENT" | "NONE",
-        "violationReason": "string",
-        "category": "string",
-        "title": "refined title",
-        "description": "enhanced description",
-        "summary": "short summary",
-        "tags": ["tag1", "tag2"],
-        "distinguishingFeatures": ["feature1", "feature2"]
-      }
-    `;
-
-    const parts: any[] = [{ text: promptText }];
-    base64Images.forEach(img => {
-      const data = img.split(',')[1] || img;
-      if (data) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-      }
-    });
-
-    const response = await generateWithCascade({
-      contents: { parts },
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const result = JSON.parse(text);
-
-    return {
-      isViolating: result.isViolating || false,
-      violationType: result.violationType || 'NONE',
-      violationReason: result.violationReason || '',
-      isPrank: false,
-      category: result.category || ItemCategory.OTHER,
-      title: result.title || title,
-      description: result.description || description,
-      summary: result.summary || description.substring(0, 50),
-      tags: result.tags || [],
-      distinguishingFeatures: result.distinguishingFeatures || [],
-      faceStatus: 'NONE'
-    };
-  } catch (error: any) {
-    if (error.message === "MISSING_GOOGLE_KEY") {
-        console.warn("AI Analysis Skipped: API Key missing.");
-    } else {
-        console.error("AI Analysis Error", error);
-    }
-    return { 
-      isViolating: false,
-      isPrank: false, 
-      category: ItemCategory.OTHER, 
-      title: title || "Item", 
-      description, 
-      distinguishingFeatures: [],
-      summary: "", 
-      tags: [],
-      faceStatus: 'NONE'
-    } as any;
-  }
-};
-
-export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LOST' | 'FOUND' | 'NONE'; refinedQuery: string }> => {
-  try {
-    const response = await generateWithCascade({
-      contents: {
-        parts: [{ text: `Determine intent (LOST/FOUND/NONE) and extract keywords for: "${query}". Return JSON: { "userStatus": "LOST"|"FOUND"|"NONE", "refinedQuery": "keywords" }` }]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
-    if (e.message !== "MISSING_GOOGLE_KEY") console.error(e);
-    return { userStatus: 'NONE', refinedQuery: query };
-  }
-};
-
-export const findPotentialMatches = async (
-  query: { description: string; imageUrls: string[] },
-  candidates: ItemReport[]
-): Promise<{ id: string }[]> => {
-  if (candidates.length === 0) return [];
-  try {
-    const candidateList = candidates.map(c => ({ 
-        id: c.id, 
-        title: c.title, 
-        desc: c.description,
-        cat: c.category
-    }));
-    
-    const parts: any[] = [{ text: `
-      Task: Find items in Candidates that match Source.
-      Source: ${query.description}
-      Candidates: ${JSON.stringify(candidateList)}
-      Return JSON: { "matches": [{ "id": "candidate_id" }] }
-    ` }];
-
-    if (query.imageUrls.length > 0 && query.imageUrls[0].startsWith('data:')) {
-       const data = query.imageUrls[0].split(',')[1];
-       parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-    }
-
-    const response = await generateWithCascade({
-      contents: { parts },
-      config: { responseMimeType: "application/json" }
-    });
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const data = JSON.parse(text);
-    return data.matches || [];
-  } catch (e: any) {
-    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Match finding error", e);
-    return [];
-  }
-};
-
-export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
-  try {
-    const promptText = `
-      Compare Item A (${itemA.title}) and Item B (${itemB.title}).
-      Are they the same object?
-      Return JSON: { "confidence": number (0-100), "explanation": "string", "similarities": ["s1"], "differences": ["d1"] }
-    `;
-
-    const parts: any[] = [{ text: promptText }];
-    const imagesToAdd = [itemA.imageUrls[0], itemB.imageUrls[0]].filter(url => url && url.startsWith('data:'));
-    imagesToAdd.forEach(img => {
-      const data = img.split(',')[1];
-      if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-    });
-
-    const response = await generateWithCascade({
-      contents: { parts },
-      config: { responseMimeType: "application/json" }
-    });
-
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
-    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Comparison Error", e);
-    return { confidence: 0, explanation: "Comparison failed.", similarities: [], differences: [] };
-  }
-};
+export default Profile;
