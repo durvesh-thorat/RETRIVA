@@ -29,7 +29,7 @@ const VisionDemo = () => {
        {/* Image Side */}
        <div className="w-1/2 relative bg-slate-800 overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1605518216938-7f31b709d043?q=80&w=800&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1602143407151-0111d25649e8?q=80&w=800&auto=format&fit=crop" 
             className="w-full h-full object-cover opacity-80" 
             alt="Lost Bottle"
           />
