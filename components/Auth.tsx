@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Loader2, ArrowRight, Eye, EyeOff, AlertCircle, Mail, Lock, User as UserIcon, BrainCircuit, Search, ShieldCheck, LockKeyhole, Cpu, Zap, Activity } from 'lucide-react';
+import { Loader2, ArrowRight, Eye, EyeOff, AlertCircle, Mail, Lock, User as UserIcon, BrainCircuit, Search, ShieldCheck, LockKeyhole, Cpu, Zap, Activity, MessageCircle, Users } from 'lucide-react';
 import { auth, db, googleProvider } from '../services/firebase';
 
 interface AuthProps {
@@ -27,7 +27,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
   useEffect(() => {
     const checkRedirect = async () => {
       try {
-        // This checks if we are returning from a redirect flow
         const result = await auth.getRedirectResult();
         if (result && result.user) {
           setIsGoogleLoading(true);
@@ -35,7 +34,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
           await processLogin(firebaseUser);
         }
       } catch (err: any) {
-        // IGNORE "operation-not-supported" error on initial load
         if (err.code === 'auth/operation-not-supported-in-this-environment') {
             console.warn("Firebase Auth Redirect not supported in this environment. Skipping check.");
             setIsGoogleLoading(false);
@@ -62,9 +60,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
         // Create new user from Google Profile
         const newUser: User = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Student',
-          email: firebaseUser.email || '',
-          studentId: '', 
+          name: firebaseUser.displayName || name || 'Student',
+          email: firebaseUser.email || email || '',
+          studentId: '2025-' + Math.floor(1000 + Math.random() * 9000), 
           isVerified: false,
           avatar: firebaseUser.photoURL || ''
         };
@@ -105,7 +103,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
     setDebugInfo(null);
     
     try {
-      // 1. Try Popup first (Better UX)
       const result = await auth.signInWithPopup(googleProvider);
       await processLogin(result.user);
     } catch (err: any) {
@@ -115,7 +112,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
           return;
       }
 
-      // 2. Fallback to Redirect if Popup fails
       if (err.code === 'auth/network-request-failed' || err.code === 'auth/popup-blocked') {
          console.warn("Popup failed, falling back to redirect...");
          try {
@@ -142,23 +138,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
     try {
       if (isLogin) {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        await processLogin(userCredential.user);
+        if (userCredential.user) {
+           await processLogin(userCredential.user);
+        }
       } else {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const firebaseUser = userCredential.user;
         if (firebaseUser) {
           await firebaseUser.updateProfile({ displayName: name });
-          
-          const newUser: User = {
-            id: firebaseUser.uid,
-            name: name, 
-            email: email,
-            studentId: '2025-' + Math.floor(1000 + Math.random() * 9000), 
-            isVerified: false,
-            avatar: ''
-          };
-          await db.collection('users').doc(firebaseUser.uid).set(newUser);
-          onLogin(newUser);
+          await processLogin(firebaseUser);
         }
       }
     } catch (err: any) {
@@ -178,7 +166,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 md:p-8 font-sans relative overflow-hidden bg-black">
       
-      {/* RICH CHANGING DARK GRADIENT BACKGROUND (Outer) - Darker & Subtler */}
+      {/* RICH CHANGING DARK GRADIENT BACKGROUND (Outer) */}
       <div 
         className="absolute inset-0 animate-gradient-slow opacity-80"
         style={{
@@ -249,7 +237,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
                   </div>
 
                   {/* Features List */}
-                  <div className="space-y-5 w-full max-w-sm lg:max-w-none mx-auto lg:mx-0">
+                  <div className="space-y-6 w-full max-w-sm lg:max-w-none mx-auto lg:mx-0 mt-4">
                     <div className="flex gap-4 group">
                         <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/10 group-hover:border-indigo-500/20 transition-all duration-300 shadow-lg">
                           <BrainCircuit className="w-6 h-6 text-indigo-400" />
@@ -274,39 +262,30 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
                         </div>
                     </div>
 
-                    {/* PREMIUM UNDER THE HOOD BUTTON - Integrated in List */}
-                    <button 
-                      onClick={onShowFeatures} 
-                      className="group relative w-full text-left overflow-hidden rounded-2xl border border-indigo-500/20 bg-[#0f172a] hover:border-indigo-500/50 transition-all duration-500 hover:-translate-y-1 shadow-xl shadow-black/20"
-                    >
-                        {/* Glowing Background Effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 via-purple-600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-                        
-                        <div className="relative z-10 p-3 flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform duration-500 shrink-0">
-                              <Cpu className="w-6 h-6 text-white animate-pulse-slow" />
-                            </div>
-                            <div className="flex-1 pt-0.5">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                  <h3 className="font-bold text-white text-sm tracking-wide">UNDER THE HOOD</h3>
-                                  <ArrowRight className="w-3.5 h-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform" />
-                              </div>
-                              <p className="text-[10px] text-slate-400 font-medium leading-relaxed group-hover:text-slate-200 transition-colors">
-                                  Technical Deep Dive: Vector Search & AI Stack
-                              </p>
-                            </div>
+                    <div className="flex gap-4 group">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-purple-500/10 group-hover:border-purple-500/20 transition-all duration-300 shadow-lg">
+                          <MessageCircle className="w-6 h-6 text-purple-400" />
                         </div>
-                    </button>
+                        <div className="pt-1">
+                          <h3 className="font-bold text-slate-200 text-sm mb-1 group-hover:text-white transition-colors">Secure Connect</h3>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                            Coordinate returns safely with built-in anonymous messaging and blocking.
+                          </p>
+                        </div>
+                    </div>
                   </div>
               </div>
 
-              {/* Footer Stats - Graph Scribble */}
+              {/* Footer Stats */}
               <div className="mt-8 pt-4 border-t border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-600 uppercase tracking-widest shrink-0">
                  <div className="flex items-center gap-2">
                     <Activity className="w-3 h-3 text-emerald-500" />
-                    <span>Live Network Active</span>
+                    <span>System Operational</span>
                  </div>
-                 <span className="text-slate-700">v1.2.0-beta</span>
+                 <div className="flex items-center gap-2">
+                    <Users className="w-3 h-3 text-indigo-500" />
+                    <span className="text-slate-500">FOR CAMPUS COMMUNITY</span>
+                 </div>
               </div>
 
            </div>
@@ -477,7 +456,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
 
            {/* Mobile Footer Links */}
            <div className="mt-8 sm:hidden flex justify-center gap-6 text-[10px] font-bold text-slate-600 border-t border-slate-800/50 pt-6">
-              <button onClick={onShowFeatures} className="text-indigo-400">Under the Hood</button>
               <button onClick={onShowLegal}>Terms</button>
               <button onClick={onShowLegal}>Privacy</button>
            </div>
