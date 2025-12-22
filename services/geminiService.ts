@@ -141,31 +141,60 @@ const convertGeminiToGroq = (contents: any, forceJsonInstructions: boolean = fal
   return [{ role: "user", content: fullText.trim() }];
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const callGroqAPI = async (messages: any[], jsonMode: boolean = false) => {
   const apiKey = getApiKey('GROQ');
   if (!apiKey) throw new Error("Missing Groq API Key");
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages,
-      model: GROQ_MODEL,
-      temperature: 0.2,
-      max_tokens: 1024,
-      response_format: jsonMode ? { type: "json_object" } : { type: "text" }
-    })
-  });
+  let attempts = 0;
+  const maxAttempts = 3;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API Error ${response.status}: ${errText}`);
+  while (attempts < maxAttempts) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messages,
+          model: GROQ_MODEL,
+          temperature: 0.2,
+          max_tokens: 1024,
+          response_format: jsonMode ? { type: "json_object" } : { type: "text" }
+        })
+      });
+
+      // Handle Rate Limits (429) specifically
+      if (response.status === 429) {
+         const retryHeader = response.headers.get("retry-after");
+         // Default wait 2s, 4s, 8s if no header
+         const waitTime = retryHeader ? parseInt(retryHeader, 10) * 1000 : 2000 * Math.pow(2, attempts);
+         
+         console.warn(`Groq 429 Rate Limit. Retrying in ${waitTime}ms... (Attempt ${attempts + 1}/${maxAttempts})`);
+         
+         await sleep(waitTime);
+         attempts++;
+         continue;
+      }
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq API Error ${response.status}: ${errText}`);
+      }
+
+      return await response.json();
+    } catch (e: any) {
+      console.warn(`Groq Attempt ${attempts + 1} failed:`, e.message);
+      if (attempts === maxAttempts - 1) throw e;
+      // Wait a bit before retrying generic network errors
+      await sleep(1000); 
+      attempts++;
+    }
   }
-
-  return await response.json();
+  throw new Error("Groq API failed after maximum retries.");
 };
 
 const runGroqFallback = async (params: any): Promise<{ text: string }> => {

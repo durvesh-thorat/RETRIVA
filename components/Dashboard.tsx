@@ -136,6 +136,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                const matchIds = results.map(r => r.id);
                newMatches[myItem.id] = candidates.filter(c => matchIds.includes(c.id));
            }
+
+           // Add delay to prevent rate limiting (especially for Groq)
+           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       }
       
@@ -219,7 +222,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
                  {/* Subtitle */}
                  <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-md mx-auto lg:mx-0">
-                     Reconnect with what you’ve lost
+                     Reconnect with what you’ve lost using visual AI.
                  </p>
 
                  {/* Under the Hood Button */}
