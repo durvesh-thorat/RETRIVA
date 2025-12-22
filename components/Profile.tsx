@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
 import { User as UserIcon, Mail, Building, Save, Camera, ArrowLeft, Loader2, Trash2, Edit3, AlertTriangle, LogOut } from 'lucide-react';
@@ -20,6 +19,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccou
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -193,18 +193,52 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onBack, onDeleteAccou
                      </button>
                   </div>
 
-                  {/* Delete Account Row */}
-                  <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/20">
-                      <div>
-                          <h4 className="font-bold text-red-900 dark:text-red-200 text-sm">Delete Account</h4>
-                          <p className="text-xs text-red-700/70 dark:text-red-300/60 mt-0.5">Permanently remove your profile and data.</p>
-                      </div>
-                      <button 
-                        onClick={onDeleteAccount}
-                        className="px-5 py-2.5 bg-white/50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white transition-colors shadow-sm"
-                      >
-                          Delete
-                      </button>
+                  {/* Delete Account Row with Confirmation */}
+                  <div className={`flex flex-col p-4 rounded-2xl border transition-all duration-300 ${showDeleteConfirm ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'}`}>
+                      {!showDeleteConfirm ? (
+                          <div className="flex items-center justify-between">
+                              <div>
+                                  <h4 className="font-bold text-red-900 dark:text-red-200 text-sm">Delete Account</h4>
+                                  <p className="text-xs text-red-700/70 dark:text-red-300/60 mt-0.5">Permanently remove your profile and data.</p>
+                              </div>
+                              <button 
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="px-5 py-2.5 bg-white/50 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-xs font-bold rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+                              >
+                                  Delete
+                              </button>
+                          </div>
+                      ) : (
+                          <div className="animate-in fade-in slide-in-from-top-2">
+                              <div className="flex items-start gap-3 mb-4">
+                                  <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg text-red-600 dark:text-red-400 shrink-0">
+                                      <AlertTriangle className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                      <h4 className="font-bold text-red-900 dark:text-white text-sm">Are you absolutely sure?</h4>
+                                      <p className="text-xs text-red-700 dark:text-red-300 mt-1 leading-relaxed max-w-md">
+                                          This action cannot be undone. It will permanently delete your account, 
+                                          remove all your reported items (Lost/Found), and erase your chat history 
+                                          from the platform.
+                                      </p>
+                                  </div>
+                              </div>
+                              <div className="flex items-center gap-3 justify-end">
+                                  <button 
+                                      onClick={() => setShowDeleteConfirm(false)}
+                                      className="px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 transition-colors"
+                                  >
+                                      Cancel
+                                  </button>
+                                  <button 
+                                      onClick={() => { onDeleteAccount(); setShowDeleteConfirm(false); }}
+                                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-lg shadow-red-600/20 transition-all flex items-center gap-2"
+                                  >
+                                      <Trash2 className="w-3.5 h-3.5" /> Confirm Deletion
+                                  </button>
+                              </div>
+                          </div>
+                      )}
                   </div>
                </div>
            </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint, Radar } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findPotentialMatches } from '../services/geminiService';
 
@@ -96,7 +96,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
   // AI Match Center State - Manual Control
   const [matches, setMatches] = useState<Record<string, ItemReport[]>>({});
   const [isScanning, setIsScanning] = useState(false);
-  const [lastScanTime, setLastScanTime] = useState<number | null>(null);
   
   const CACHE_DATA_KEY = `retriva_matches_manual_${user.id}`;
 
@@ -142,7 +141,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
       
       setMatches(newMatches);
       localStorage.setItem(CACHE_DATA_KEY, JSON.stringify(newMatches));
-      setLastScanTime(Date.now());
     } catch (e) {
       console.error("Scan failed", e);
     } finally {
@@ -221,23 +219,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
                  {/* Subtitle */}
                  <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-md mx-auto lg:mx-0">
-                     Reconnect with what you’ve lost.
+                     Reconnect with what you’ve lost using visual AI.
                  </p>
-
-                 {/* Under Hood Button */}
-                 <div className="hidden md:flex flex-col items-center lg:items-start gap-2">
-                    <button 
-                      onClick={() => onNavigate('FEATURES')}
-                      className="inline-flex items-center gap-3 px-1 py-1 pr-6 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-full transition-all duration-300 group hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:border-indigo-500/50"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-[#282a3e] border border-white/5 flex items-center justify-center group-hover:bg-[#363852] transition-colors">
-                            <Cpu className="w-5 h-5 text-indigo-400" />
-                        </div>
-                        <span className="text-xs font-bold text-white uppercase tracking-wider">Under the Hood</span>
-                        <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                    </button>
-                    <p className="text-[10px] text-slate-500 font-medium pl-2">System design and core ideas</p>
-                 </div>
              </div>
 
              {/* Right Side - Buttons */}
@@ -271,145 +254,157 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                      </div>
                      <ArrowRight className="ml-auto w-5 h-5 text-slate-600 group-hover:text-white group-hover:translate-x-1 transition-all" />
                  </button>
-
-                  {/* Mobile Only Under Hood Button */}
-                  <button 
-                   onClick={() => onNavigate('FEATURES')}
-                   className="md:hidden w-full flex items-center justify-center gap-3 py-4 mt-2 bg-[#1e2030] hover:bg-[#2a2d42] border border-white/5 rounded-xl transition-all duration-300 group hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:border-indigo-500/50"
-                 >
-                     <Cpu className="w-4 h-4 text-indigo-400" />
-                     <span className="text-xs font-bold text-white uppercase tracking-wider">Under the Hood</span>
-                 </button>
              </div>
           </div>
       </section>
 
-      {/* AI DISCOVERY HUB - COMPACT & CLEAN DESIGN */}
-      <div id="ai-discovery-hub" className="animate-fade-in space-y-4 scroll-mt-24">
-           {/* Compact Header */}
-           <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-2">
-                <div className={`p-2 rounded-lg bg-indigo-50 dark:bg-slate-800 ${hasMatches ? 'text-indigo-600' : 'text-slate-400'}`}>
-                   <Network className="w-5 h-5" />
-                </div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">AI Discovery Hub</h2>
-                {myItemsCount > 0 && !isScanning && !hasMatches && (
-                   <span className="ml-2 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-500 rounded-md">
-                      {myItemsCount} Active Reports
-                   </span>
-                )}
-              </div>
-              
-              <button 
-                onClick={handleManualScan}
-                disabled={isScanning || myItemsCount === 0}
-                className={`group relative overflow-hidden px-4 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all flex items-center gap-2
-                  ${isScanning 
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed' 
-                    : 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-800 hover:border-indigo-500 hover:shadow-sm'
-                  }
-                `}
-              >
-                 {isScanning ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning...
-                    </>
-                 ) : (
-                    <>
-                      <Scan className="w-3.5 h-3.5" /> Scan Network
-                    </>
-                 )}
-              </button>
-           </div>
+      {/* RE-DESIGNED AI DISCOVERY HUB */}
+      <div id="ai-discovery-hub" className="animate-fade-in scroll-mt-24">
+         <div className="relative rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden p-6 sm:p-8">
+            
+            {/* Ambient Background Gradient */}
+            <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none"></div>
 
-           {/* Main Content Area */}
-           <div className="relative">
-              
-              {/* STATE 1: LOADING */}
-              {isScanning && (
-                 <div className="h-32 rounded-2xl bg-white/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 flex items-center justify-center backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-2">
-                       <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                       <p className="text-xs font-bold text-slate-500">Analyzing vector embeddings...</p>
-                    </div>
-                 </div>
-              )}
+            {/* Hub Header */}
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+               <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-100 dark:border-indigo-500/20">
+                     <Network className="w-6 h-6" />
+                  </div>
+                  <div>
+                     <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                        AI Discovery Hub
+                        {myItemsCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 font-bold border border-slate-200 dark:border-slate-700">
+                             {myItemsCount} Active Items
+                          </span>
+                        )}
+                     </h2>
+                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
+                        Semantic matching across the entire campus network.
+                     </p>
+                  </div>
+               </div>
+               
+               <button 
+                 onClick={handleManualScan}
+                 disabled={isScanning || myItemsCount === 0}
+                 className={`group relative px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all overflow-hidden flex items-center gap-3 shadow-lg
+                   ${isScanning 
+                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed' 
+                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98]'
+                   }
+                 `}
+               >
+                  {isScanning ? (
+                     <>
+                       <Loader2 className="w-4 h-4 animate-spin" /> Scanning Network...
+                     </>
+                  ) : (
+                     <>
+                       <Radar className="w-4 h-4" /> Run Deep Scan
+                     </>
+                  )}
+                  {/* Sweep Effect */}
+                  {!isScanning && (
+                     <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent z-10"></div>
+                  )}
+               </button>
+            </div>
 
-              {/* STATE 2: EMPTY / NO MATCHES */}
-              {!isScanning && !hasMatches && (
-                 <div className="h-24 rounded-2xl bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center px-4">
-                     <div className="flex items-center gap-4 text-slate-400">
-                        <div className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm">
-                           <Layers className="w-5 h-5 opacity-50" />
-                        </div>
-                        <div className="text-left">
-                           <p className="text-sm font-bold text-slate-600 dark:text-slate-300">System Standby</p>
-                           <p className="text-[11px] font-medium opacity-70">
-                              {myItemsCount > 0 ? "Scan to find matches for your active items." : "File a report to start matching."}
-                           </p>
-                        </div>
+            {/* Content Area */}
+            <div className="relative min-h-[160px] bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-100 dark:border-slate-800/50 overflow-hidden">
+               
+               {/* 1. Empty State */}
+               {!isScanning && !hasMatches && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                      <div className="w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center mb-4 ring-1 ring-slate-200 dark:ring-slate-800">
+                         <Layers className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">System Standby</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-[250px]">
+                         {myItemsCount > 0 
+                            ? "Click 'Run Deep Scan' to find matches for your active items." 
+                            : "File a report to start generating automatic matches."}
+                      </p>
+                  </div>
+               )}
+
+               {/* 2. Scanning State */}
+               {isScanning && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-900/90 backdrop-blur-sm z-20">
+                     <div className="relative w-20 h-20 mb-6">
+                        <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+                        <div className="absolute inset-0 rounded-full border-t-4 border-indigo-500 animate-spin"></div>
+                        <Scan className="absolute inset-0 m-auto w-8 h-8 text-indigo-500 animate-pulse" />
                      </div>
-                 </div>
-              )}
+                     <p className="text-sm font-bold text-slate-900 dark:text-white animate-pulse">Analyzing Vector Embeddings...</p>
+                     <p className="text-xs text-slate-500 mt-1">Cross-referencing {myItemsCount} items against database</p>
+                  </div>
+               )}
 
-              {/* STATE 3: MATCHES FOUND (Horizontal Scroll) */}
-              {!isScanning && hasMatches && (
-                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x px-1 scroll-smooth">
-                    {Object.entries(matches).map(([sourceId, matchedItems]) => {
+               {/* 3. Matches Found (Grid Layout) */}
+               {!isScanning && hasMatches && (
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {Object.entries(matches).map(([sourceId, matchedItems]) => {
                         const sourceItem = reports.find(r => r.id === sourceId);
                         if (!sourceItem) return null;
 
                         const items = matchedItems as ItemReport[];
 
                         return (
-                           <div key={sourceId} className="snap-center shrink-0 w-[420px] h-48 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex overflow-hidden group hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                              
-                              {/* Left: Source Item */}
-                              <div className="w-36 bg-slate-100 dark:bg-slate-900 relative shrink-0">
+                           <div key={sourceId} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col sm:flex-row h-auto sm:h-44 group hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                              {/* Left: Your Item */}
+                              <div className="w-full sm:w-1/3 bg-slate-100 dark:bg-slate-950 relative overflow-hidden h-32 sm:h-full shrink-0">
                                   {sourceItem.imageUrls[0] ? (
                                     <img src={sourceItem.imageUrls[0]} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                                   ) : <Box className="w-8 h-8 m-auto text-slate-300 absolute inset-0" />}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                                  <div className="absolute bottom-3 left-3 right-3">
-                                     <p className="text-[9px] font-bold text-white/70 uppercase tracking-wider mb-0.5">Your Item</p>
+                                  <div className="absolute inset-0 bg-black/40 flex flex-col justify-end p-3">
+                                     <p className="text-[9px] font-bold text-white/70 uppercase tracking-wider mb-0.5">My Report</p>
                                      <p className="text-xs font-bold text-white truncate leading-tight">{sourceItem.title}</p>
                                   </div>
                               </div>
 
                               {/* Right: Matches List */}
                               <div className="flex-1 flex flex-col min-w-0">
-                                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                                 <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
                                     <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
-                                       <Sparkles className="w-3 h-3" /> {items.length} Candidates
+                                       <Sparkles className="w-3 h-3" /> {items.length} Potential Match{items.length !== 1 ? 'es' : ''}
                                     </span>
                                  </div>
                                  
                                  <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                                     {items.map(match => (
-                                       <div 
+                                       <button 
                                          key={match.id}
                                          onClick={() => onCompare(sourceItem, match)}
-                                         className="flex items-center gap-3 p-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/10 cursor-pointer transition-colors group/item"
+                                         className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors text-left group/item"
                                        >
-                                          <div className="w-8 h-8 rounded-md bg-slate-200 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-300 dark:border-slate-700">
+                                          <div className="w-10 h-10 rounded-md bg-slate-200 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-300 dark:border-slate-700">
                                              {match.imageUrls[0] && <img src={match.imageUrls[0]} className="w-full h-full object-cover" />}
                                           </div>
                                           <div className="flex-1 min-w-0">
-                                             <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">{match.title}</p>
-                                             <p className="text-[9px] text-slate-400 truncate">{match.location}</p>
+                                             <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate group-hover/item:text-indigo-600 dark:group-hover/item:text-indigo-400 transition-colors">
+                                                {match.title}
+                                             </p>
+                                             <p className="text-[9px] text-slate-400 truncate flex items-center gap-1">
+                                                <MapPin className="w-2.5 h-2.5" /> {match.location}
+                                             </p>
                                           </div>
-                                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover/item:text-indigo-500 transition-colors" />
-                                       </div>
+                                          <div className="p-1.5 rounded-full bg-white dark:bg-slate-800 text-slate-300 group-hover/item:text-indigo-500 shadow-sm opacity-0 group-hover/item:opacity-100 transition-all">
+                                             <ChevronRight className="w-3 h-3" />
+                                          </div>
+                                       </button>
                                     ))}
                                  </div>
                               </div>
-
                            </div>
                         );
-                    })}
-                 </div>
-              )}
-           </div>
+                     })}
+                  </div>
+               )}
+            </div>
+         </div>
       </div>
 
       {/* Main Content Feed */}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -117,12 +116,12 @@ const App: React.FC = () => {
     }
   }, [activeChatId]);
 
-  // Presence Heartbeat
+  // Presence Heartbeat - Increased frequency to avoid "offline" status
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
-        db.collection('users').doc(user.id).update({ lastSeen: Date.now(), isOnline: true });
-    }, 60000); // Every minute
+        db.collection('users').doc(user.id).update({ lastSeen: Date.now(), isOnline: true }).catch(() => {});
+    }, 30000); // Every 30 seconds
 
     const handleDisconnect = () => {
         if (user) {
@@ -267,25 +266,45 @@ const App: React.FC = () => {
 
   const handleDeleteAccount = async () => {
     if (!user) return;
-    if (!window.confirm("Are you sure? This will delete all your reports and remove you from chats.")) return;
-
+    // Note: window.confirm removed in favor of Profile UI confirmation
+    
     setAuthLoading(true);
     try {
         const batch = db.batch();
 
-        // 1. Delete Reports (Optimistic UI update)
-        setReports(prev => prev.filter(r => r.reporterId !== user.id));
+        // 1. DELETE ALL REPORTS BY USER
+        const reportsQuery = await db.collection('reports').where('reporterId', '==', user.id).get();
+        reportsQuery.forEach(doc => {
+           batch.delete(doc.ref);
+        });
         
-        // 2. Remove user from Chats (Handled by backend triggers usually, soft delete here)
+        // 2. DELETE/CLEANUP CHATS WHERE USER IS PARTICIPANT
+        const chatsQuery = await db.collection('chats').where('participants', 'array-contains', user.id).get();
+        chatsQuery.forEach(doc => {
+            const chatData = doc.data() as Chat;
+            
+            // For Global Chat: Just remove from participants logic? Usually global chat doesn't track participants strictly in array for everyone.
+            // Assuming strict participants array for private chats:
+            if (chatData.type !== 'global') {
+                // NUCLEAR OPTION: Delete the entire chat document
+                // Note: To be truly clean, we should delete the subcollection 'messages' too,
+                // but strictly deleting the parent doc makes it inaccessible in the app UI for both.
+                // A cloud function would be better for recursive delete, but for client-side:
+                batch.delete(doc.ref);
+            }
+        });
+
+        // 3. DELETE USER DOCUMENT
+        const userRef = db.collection('users').doc(user.id);
+        batch.delete(userRef);
         
-        // 3. Delete User Doc
-        batch.delete(db.collection('users').doc(user.id));
-        
-        // Commit batch
+        // Commit Batch (Max 500 ops)
         await batch.commit();
 
-        // 4. Auth Delete
-        await auth.currentUser?.delete();
+        // 4. DELETE AUTH ACCOUNT
+        if (auth.currentUser) {
+           await auth.currentUser.delete();
+        }
         
         // Clear storage
         localStorage.removeItem('retriva_view');
@@ -293,10 +312,16 @@ const App: React.FC = () => {
 
         setUser(null);
         setView('AUTH');
-        setToast({ message: "Account deleted.", type: 'info' });
-    } catch (e) {
+        setToast({ message: "Account successfully deleted.", type: 'info' });
+    } catch (e: any) {
         console.error("Delete account error", e);
-        setToast({ message: "Error deleting account. Re-login and try again.", type: 'alert' });
+        // If auth delete fails (requires recent login), force logout at least
+        if (e.code === 'auth/requires-recent-login') {
+            setToast({ message: "Please log in again to delete your account.", type: 'alert' });
+            await auth.signOut();
+        } else {
+            setToast({ message: "Error deleting account. Contact support.", type: 'alert' });
+        }
     } finally {
         setAuthLoading(false);
     }

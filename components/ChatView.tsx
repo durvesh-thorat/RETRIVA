@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chat, User, Message } from '../types';
 import { Send, Search, ArrowLeft, MessageCircle, Check, CheckCheck, Paperclip, File, ShieldBan, ShieldCheck, Lock, Globe, Users, Trash2, Home, X, Pin, ChevronDown, Clock } from 'lucide-react';
@@ -42,8 +41,15 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
   const iBlockedThem = selectedChat?.blockedBy === user.id;
   const theyBlockedMe = isBlocked && !iBlockedThem;
 
-  const otherParticipantId = selectedChat?.participants.find(p => p !== user.id);
-  const isOtherUserTyping = selectedChat?.typing && Object.entries(selectedChat.typing).some(([uid, isTyping]) => uid !== user.id && isTyping);
+  const otherParticipantId = useMemo(() => {
+     return selectedChat?.participants.find(p => p !== user.id);
+  }, [selectedChat, user.id]);
+
+  // TYPING INDICATOR LOGIC: Check specifically if the *other* user is typing
+  const isOtherUserTyping = useMemo(() => {
+     if (!selectedChat?.typing || !otherParticipantId) return false;
+     return selectedChat.typing[otherParticipantId] === true;
+  }, [selectedChat, otherParticipantId]);
 
   // 0. Listen to Subcollection Messages
   useEffect(() => {
@@ -105,7 +111,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
 
   // 2. Fetch Online Status & Last Seen
   useEffect(() => {
-     if (!otherParticipantId || isGlobal) return;
+     if (!otherParticipantId || isGlobal) {
+        setOtherUserOnline(false);
+        setOtherUserLastSeen(null);
+        return;
+     }
      
      const userRef = db.collection('users').doc(otherParticipantId);
      const unsubscribe = userRef.onSnapshot((snap) => {
@@ -129,10 +139,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
 
   useEffect(() => {
     if (allMessages.length > 0 || isOtherUserTyping) {
-      // Only auto-scroll if we are already near bottom or it's the first load
+      // Auto-scroll if near bottom or if new message just arrived
       const container = scrollContainerRef.current;
       if (container) {
-          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 300;
+          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 400;
           if (isNearBottom) {
               scrollToBottom();
           }
@@ -177,6 +187,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
     setNewMessage('');
     setTyping(false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
+    // Immediately clear typing status on send
+    db.collection('chats').doc(activeChatId).update({ [`typing.${user.id}`]: false }).catch(() => {});
 
     const timestamp = Date.now();
     const msgData: any = {
@@ -292,7 +305,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
 
         <div className="flex-1 overflow-y-auto p-3">
           {filteredChats.map(chat => {
-            const isTyping = chat.typing && Object.entries(chat.typing).some(([uid, typing]) => uid !== user.id && typing);
+            const isAnyTyping = chat.typing && Object.entries(chat.typing).some(([uid, typing]) => uid !== user.id && typing);
             return (
                 <div 
                 key={chat.id}
@@ -323,7 +336,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                         <span className="text-[10px] font-medium text-slate-400">{formatTime(chat.lastMessageTime)}</span>
                     </div>
                     <p className="text-xs truncate text-slate-500 font-medium flex items-center gap-1">
-                        {isTyping ? (
+                        {isAnyTyping ? (
                             <span className="text-brand-violet animate-pulse font-bold">Typing...</span>
                         ) : chat.isBlocked ? (
                         <span className="text-red-500 flex items-center gap-1"><ShieldBan className="w-3 h-3" /> Blocked</span>
@@ -466,7 +479,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                         {msg.attachment && (
                           <div className={`mb-1 rounded-2xl overflow-hidden border shadow-sm cursor-pointer ${isBlocked ? 'opacity-50 grayscale' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`} onClick={() => msg.attachment?.type === 'image' && setLightboxImg(msg.attachment.url)}>
                               {msg.attachment.type === 'image' ? (
-                                <img src={msg.attachment.url} className="max-w-full max-h-60 object-cover" />
+                                <img 
+                                   src={msg.attachment.url} 
+                                   className="max-w-full max-h-60 object-cover" 
+                                   onLoad={() => scrollToBottom()} // Ensure scroll on load
+                                />
                               ) : (
                                 <div className="p-4 bg-white dark:bg-slate-800 flex items-center gap-3">
                                   <File className="w-8 h-8 text-brand-violet" />
@@ -503,7 +520,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
                 );
               })}
               
-              {/* Typing Indicator */}
+              {/* Typing Indicator - Only show if OTHER user is typing */}
               {isOtherUserTyping && (
                   <div className="flex w-full justify-start mt-4 animate-fade-in">
                       <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-[1.25rem] rounded-tl-sm border border-slate-100 dark:border-slate-800 flex gap-1.5 items-center shadow-sm">
