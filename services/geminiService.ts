@@ -9,7 +9,7 @@ export interface ComparisonResult {
 }
 
 // --- CIRCUIT BREAKER CONFIGURATION ---
-const BLOCK_DURATION = 6 * 60 * 60 * 1000; // 6 Hours
+const BLOCK_DURATION = 10 * 60 * 1000; // 10 Minutes (Reduced from 6h for better UX)
 const STORAGE_KEY_BLOCK = 'retriva_circuit_breaker_until';
 const STORAGE_KEY_HASH = 'retriva_api_key_hash';
 
@@ -80,12 +80,12 @@ const tripCircuitBreaker = () => {
     const liftTime = Date.now() + BLOCK_DURATION;
     localStorage.setItem(STORAGE_KEY_BLOCK, liftTime.toString());
     
-    console.error(`⛔ Gemini Circuit Breaker Tripped. All requests switched to Groq for 6 hours.`);
+    console.error(`⛔ Gemini Circuit Breaker Tripped. All requests switched to Groq for 10 minutes.`);
     
     if (typeof window !== 'undefined') {
         const event = new CustomEvent('retriva-toast', { 
             detail: { 
-                message: "Gemini overloaded. Switched to Backup AI for 6h.", 
+                message: "Gemini overloaded. Switched to Backup AI temporarily.", 
                 type: 'alert' 
             } 
         });
@@ -168,9 +168,17 @@ const runGroqFallback = async (params: any): Promise<{ text: string }> => {
   console.warn("Attempting Groq fallback...");
   if (getApiKey('GROQ')) {
     try {
-      const messages = convertGeminiToGroq(params.contents);
+      let messages = convertGeminiToGroq(params.contents);
       const isJson = !!params.config?.responseSchema || params.config?.responseMimeType === 'application/json';
       
+      // CRITICAL FIX: Groq/Llama-3 requires the word "JSON" in the prompt when json_object mode is active
+      if (isJson) {
+         messages.unshift({
+            role: "system",
+            content: "You are a helpful AI. You must output a valid JSON object."
+         });
+      }
+
       const completion = await callGroqAPI(messages, isJson);
       const text = completion.choices[0]?.message?.content || "";
       return { text };
