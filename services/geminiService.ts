@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ItemCategory, GeminiAnalysisResult, ItemReport } from "../types";
 
+// --- TYPES ---
 export interface ComparisonResult {
   confidence: number;
   explanation: string;
@@ -8,16 +9,24 @@ export interface ComparisonResult {
   differences: string[];
 }
 
-// --- CIRCUIT BREAKER CONFIGURATION ---
-const BLOCK_DURATION = 60 * 1000; // 1 Minute (Reduced for easier testing)
-const STORAGE_KEY_BLOCK = 'retriva_circuit_breaker_until';
-const STORAGE_KEY_HASH = 'retriva_api_key_hash';
+type AIProvider = 'GOOGLE' | 'GROQ';
+type TaskType = 'VISION' | 'TEXT';
 
-// Helper to safely get the API Key with priority for VITE_ prefix
-const getApiKey = (provider: 'GOOGLE' | 'GROQ'): string | undefined => {
-  let key: string | undefined = undefined;
+// --- CONFIGURATION ---
+const SYSTEM_CONFIG = {
+  // Vision tasks must use Gemini (Groq vision is currently limited/beta in some tiers)
+  VISION_MODELS: ['gemini-3-flash-preview', 'gemini-2.5-flash-latest', 'gemini-2.0-flash-exp'],
+  
+  // Text tasks can be load balanced across multiple providers
+  TEXT_MODELS_GEMINI: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
+  TEXT_MODELS_GROQ: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+};
+
+// --- HELPER: API KEYS ---
+const getApiKey = (provider: AIProvider): string | undefined => {
   const targetKey = provider === 'GOOGLE' ? 'API_KEY' : 'GROQ_API_KEY';
   const viteKey = `VITE_${targetKey}`;
+  let key: string | undefined;
 
   try {
     // @ts-ignore
@@ -27,90 +36,17 @@ const getApiKey = (provider: 'GOOGLE' | 'GROQ'): string | undefined => {
     }
   } catch (e) {}
 
-  if (!key) {
-    try {
-      if (typeof process !== 'undefined' && process.env) {
-        key = process.env[viteKey] || process.env[targetKey];
-      }
-    } catch (e) {}
+  if (!key && typeof process !== 'undefined' && process.env) {
+    key = process.env[viteKey] || process.env[targetKey];
   }
-
   return key;
 };
 
-// --- CIRCUIT BREAKER LOGIC ---
-const getApiKeyHash = (key: string) => {
-  if (!key) return 'unknown';
-  return key.slice(-6);
-};
+// --- HELPER: SLEEP WITH JITTER ---
+// Prevents "thundering herd" where all retries hit at once
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms + Math.random() * 1000));
 
-const checkCircuitBreaker = (): boolean => {
-  const apiKey = getApiKey('GOOGLE');
-  if (!apiKey) return false;
-
-  const currentHash = getApiKeyHash(apiKey);
-  const storedHash = localStorage.getItem(STORAGE_KEY_HASH);
-  const blockUntil = localStorage.getItem(STORAGE_KEY_BLOCK);
-
-  if (storedHash && storedHash !== currentHash) {
-    console.info("⚡ API Key Rotation Detected. Resetting AI Circuit Breaker.");
-    localStorage.removeItem(STORAGE_KEY_BLOCK);
-    localStorage.setItem(STORAGE_KEY_HASH, currentHash);
-    return false;
-  }
-
-  if (blockUntil) {
-    const liftTime = parseInt(blockUntil, 10);
-    if (Date.now() < liftTime) {
-       console.warn(`🛡️ Circuit Breaker Active. Gemini blocked until ${new Date(liftTime).toLocaleTimeString()}. Using Groq.`);
-       return true;
-    } else {
-       localStorage.removeItem(STORAGE_KEY_BLOCK);
-       return false;
-    }
-  }
-  return false;
-};
-
-const tripCircuitBreaker = () => {
-    const apiKey = getApiKey('GOOGLE');
-    if (apiKey) {
-        localStorage.setItem(STORAGE_KEY_HASH, getApiKeyHash(apiKey));
-    }
-    const liftTime = Date.now() + BLOCK_DURATION;
-    localStorage.setItem(STORAGE_KEY_BLOCK, liftTime.toString());
-    
-    console.error(`⛔ Gemini Circuit Breaker Tripped. All requests switched to Groq for 1 minute.`);
-    
-    if (typeof window !== 'undefined') {
-        const event = new CustomEvent('retriva-toast', { 
-            detail: { 
-                message: "Gemini limits hit. Using Backup AI (1m).", 
-                type: 'alert' 
-            } 
-        });
-        window.dispatchEvent(event);
-    }
-};
-
-const getAI = () => {
-  const apiKey = getApiKey('GOOGLE');
-  if (!apiKey) {
-    console.error("DEBUG: Google API Key missing.");
-    throw new Error("MISSING_GOOGLE_KEY");
-  }
-  return new GoogleGenAI({ apiKey });
-};
-
-// Model Cascade List: Prioritize Flash for Higher Limits/Speed
-const GOOGLE_CASCADE = [
-  'gemini-3-flash-preview',  // Primary: High Rate Limits & Speed
-  'gemini-3-pro-preview',    // Backup: Complex Reasoning
-];
-
-// Fallback Model (Groq)
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; 
-
+// --- HELPER: JSON CLEANER ---
 const cleanJSON = (text: string): string => {
   if (!text) return "{}";
   let cleaned = text.replace(/```json/g, "").replace(/```/g, "");
@@ -122,158 +58,146 @@ const cleanJSON = (text: string): string => {
   return cleaned.trim();
 };
 
-const convertGeminiToGroq = (contents: any, forceJsonInstructions: boolean = false) => {
-  const parts = contents.parts || [];
-  let fullText = "";
+// --- PROVIDER: GOOGLE GEMINI ---
+const callGemini = async (model: string, params: any) => {
+  const apiKey = getApiKey('GOOGLE');
+  if (!apiKey) throw new Error("MISSING_GOOGLE_KEY");
 
-  parts.forEach((part: any) => {
-    if (part.text) {
-      fullText += part.text + "\n";
-    } else if (part.inlineData) {
-      fullText += "\n[System Note: The user uploaded an image. Please infer details from the user's text description if available.]\n";
-    }
+  const ai = new GoogleGenAI({ apiKey });
+  
+  // Ensure config doesn't have unsupported fields for older models if we fallback
+  const config = { ...params.config };
+  
+  // Only use thinking for models that support it and if explicitly requested, 
+  // but generally remove it for stability in this swarm architecture
+  delete config.thinkingConfig; 
+
+  const response = await ai.models.generateContent({
+    ...params,
+    model,
+    config
+  });
+  
+  return response.text || "";
+};
+
+// --- PROVIDER: GROQ (OPENAI COMPATIBLE) ---
+const callGroq = async (model: string, messages: any[], jsonMode: boolean) => {
+  const apiKey = getApiKey('GROQ');
+  if (!apiKey) throw new Error("MISSING_GROQ_KEY");
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messages,
+      model,
+      temperature: 0.1, // Low temperature for factual consistency
+      max_tokens: 1024,
+      response_format: jsonMode ? { type: "json_object" } : { type: "text" }
+    })
   });
 
-  if (forceJsonInstructions) {
-    fullText += "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanations.";
+  if (response.status === 429) {
+    throw new Error("GROQ_RATE_LIMIT");
   }
 
-  return [{ role: "user", content: fullText.trim() }];
-};
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const callGroqAPI = async (messages: any[], jsonMode: boolean = false) => {
-  const apiKey = getApiKey('GROQ');
-  if (!apiKey) throw new Error("Missing Groq API Key");
-
-  let attempts = 0;
-  const maxAttempts = 3;
-
-  while (attempts < maxAttempts) {
-    try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messages,
-          model: GROQ_MODEL,
-          temperature: 0.2,
-          max_tokens: 1024,
-          response_format: jsonMode ? { type: "json_object" } : { type: "text" }
-        })
-      });
-
-      // Handle Rate Limits (429) specifically
-      if (response.status === 429) {
-         const retryHeader = response.headers.get("retry-after");
-         // Default wait 2s, 4s, 8s if no header
-         const waitTime = retryHeader ? parseInt(retryHeader, 10) * 1000 : 2000 * Math.pow(2, attempts);
-         
-         console.warn(`Groq 429 Rate Limit. Retrying in ${waitTime}ms... (Attempt ${attempts + 1}/${maxAttempts})`);
-         
-         await sleep(waitTime);
-         attempts++;
-         continue;
-      }
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Groq API Error ${response.status}: ${errText}`);
-      }
-
-      return await response.json();
-    } catch (e: any) {
-      console.warn(`Groq Attempt ${attempts + 1} failed:`, e.message);
-      if (attempts === maxAttempts - 1) throw e;
-      // Wait a bit before retrying generic network errors
-      await sleep(1000); 
-      attempts++;
-    }
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Groq Error: ${err}`);
   }
-  throw new Error("Groq API failed after maximum retries.");
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || "";
 };
 
-const runGroqFallback = async (params: any): Promise<{ text: string }> => {
-  console.warn("Attempting Groq fallback...");
-  if (getApiKey('GROQ')) {
-    try {
-      const isJson = !!params.config?.responseSchema || params.config?.responseMimeType === 'application/json';
-      let messages = convertGeminiToGroq(params.contents, isJson);
-      
-      if (isJson) {
-         messages.unshift({
-            role: "system",
-            content: "You are a helpful AI. You must output a valid JSON object."
-         });
-      }
+// --- ADAPTER: GEMINI PARAMS -> GROQ MESSAGES ---
+const convertParamsToGroq = (contents: any, systemPrompt: string = "") => {
+  const parts = contents.parts || [];
+  let userContent = "";
 
-      const completion = await callGroqAPI(messages, isJson);
-      const text = completion.choices[0]?.message?.content || "";
-      return { text };
+  parts.forEach((part: any) => {
+    if (part.text) userContent += part.text + "\n";
+    // Groq text models can't handle inlineData images, so we skip them 
+    // and rely on the text description provided in the system prompt usually
+  });
 
-    } catch (groqError: any) {
-      console.error("Groq Fallback failed:", groqError);
-      throw new Error("Both Gemini and Groq failed.");
-    }
-  } else {
-    throw new Error("AI Service Unavailable (No Backup Key).");
-  }
+  const messages = [];
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: userContent.trim() });
+  
+  return messages;
 };
 
-const generateWithCascade = async (
+// --- CORE: SWARM ORCHESTRATOR ---
+// This function routes requests dynamically based on health and availability
+const executeSwarmRequest = async (
+  taskType: TaskType, 
   params: any,
-  useReasoning = false
-): Promise<{ text: string }> => {
+  systemInfo: string = "You are a helpful AI."
+): Promise<string> => {
   
-  // 1. CIRCUIT BREAKER CHECK
-  if (checkCircuitBreaker()) {
-      return await runGroqFallback(params);
-  }
+  let strategies: Array<() => Promise<string>> = [];
 
-  let lastError: any;
-  const ai = getAI();
-  
-  // 2. TRY GOOGLE GEMINI MODELS
-  for (const modelName of GOOGLE_CASCADE) {
-      try {
-        const config = { ...params.config };
-        
-        // Only use thinking budget if we are explicitly asking for reasoning AND using Pro/Preview
-        // Flash is fast enough that we often don't need explicit thinking for basic tasks
-        if (useReasoning && (modelName.includes('gemini-3') || modelName.includes('gemini-2.5'))) {
-           config.thinkingConfig = { thinkingBudget: 1024 }; 
-        }
-
-        const response = await ai.models.generateContent({
-          ...params,
-          model: modelName,
-          config
-        });
-        
-        return { text: response.text || "" };
-
-      } catch (error: any) {
-        console.warn(`Gemini ${modelName} failed. Switching...`);
-        lastError = error;
-        if (error.message && error.message.includes("API Key")) throw error; 
-        continue; 
+  // 1. BUILD STRATEGY CHAIN
+  if (taskType === 'VISION') {
+    // Vision MUST use Gemini models (Groq Llama 3.2 Vision is strictly rate limited often)
+    // We create a chain of all available Gemini models
+    strategies = SYSTEM_CONFIG.VISION_MODELS.map(model => 
+      () => callGemini(model, params)
+    );
+  } else {
+    // Text can be load balanced. 
+    // We shuffle providers to prevent hitting one too hard.
+    const useGroqFirst = Math.random() > 0.5;
+    
+    const geminiStrategies = SYSTEM_CONFIG.TEXT_MODELS_GEMINI.map(model => 
+      () => callGemini(model, params)
+    );
+    
+    const groqStrategies = SYSTEM_CONFIG.TEXT_MODELS_GROQ.map(model => 
+      () => {
+        const isJson = !!params.config?.responseSchema || params.config?.responseMimeType === 'application/json';
+        const msgs = convertParamsToGroq(params.contents, systemInfo);
+        if (isJson) msgs.unshift({ role: "system", content: systemInfo + " You must output valid JSON." });
+        return callGroq(model, msgs, isJson);
       }
+    );
+
+    if (useGroqFirst) {
+      strategies = [...groqStrategies, ...geminiStrategies];
+    } else {
+      strategies = [...geminiStrategies, ...groqStrategies];
+    }
   }
 
-  console.error("All Gemini models exhausted.");
-  // Only trip circuit breaker if it wasn't a configuration error (like missing key)
-  if (lastError?.message !== 'MISSING_GOOGLE_KEY') {
-      tripCircuitBreaker();
+  // 2. EXECUTE CHAIN
+  let lastError = null;
+
+  for (const strategy of strategies) {
+    try {
+      const result = await strategy();
+      if (result) return result;
+    } catch (e: any) {
+      console.warn(`Swarm Node Failed: ${e.message}. Rerouting...`);
+      lastError = e;
+      
+      // If rate limited, wait a bit before trying next node
+      if (e.message.includes("429") || e.message.includes("RATE_LIMIT") || e.message.includes("Quota")) {
+        await sleep(1500); 
+      }
+    }
   }
 
-  return await runGroqFallback(params);
+  console.error("All Swarm Nodes exhausted.");
+  throw lastError || new Error("AI_SWARM_FAILURE");
 };
 
-// --- AI FEATURE FUNCTIONS ---
+
+// --- EXPORTED FEATURES (API) ---
 
 export const instantImageCheck = async (base64Image: string): Promise<{ 
   faceStatus: 'NONE' | 'ACCIDENTAL' | 'PRANK';
@@ -283,41 +207,18 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 }> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    
-    const response = await generateWithCascade({
+    const text = await executeSwarmRequest('VISION', {
       contents: {
         parts: [
-          { text: `
-            SYSTEM: Security Scan.
-            Analyze image for specific violations:
-            1. GORE/VIOLENCE
-            2. NUDITY
-            3. SELFIE/FACES (Privacy risk)
-            
-            Return JSON.
-          ` },
+          { text: `SYSTEM: Security Scan. Analyze image for violations (GORE, NUDITY, PRIVACY). Return JSON.` },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
       },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            faceStatus: { type: Type.STRING, enum: ['NONE', 'ACCIDENTAL', 'PRANK'] },
-            violationType: { type: Type.STRING, enum: ['GORE', 'ANIMAL', 'HUMAN', 'NONE'] },
-            isPrank: { type: Type.BOOLEAN },
-            reason: { type: Type.STRING }
-          },
-          required: ['faceStatus', 'violationType', 'isPrank', 'reason']
-        }
-      }
+      config: { responseMimeType: "application/json" } // Gemini only config, ignored by Groq adapter
     });
 
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
-    if (e.message === "MISSING_GOOGLE_KEY") console.warn("AI Security Scan Skipped");
+    return JSON.parse(cleanJSON(text));
+  } catch (e) {
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
 };
@@ -325,41 +226,19 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    const response = await generateWithCascade({
+    const text = await executeSwarmRequest('VISION', {
       contents: {
         parts: [
-          { text: `
-            Analyze this image for privacy protection.
-            Identify bounding boxes for:
-            1. Human Faces
-            2. Identity Documents (Driver Licenses, Student IDs, Passports)
-            3. Credit/Debit Cards
-            4. Visible PII text (phone numbers, addresses)
-
-            Use 1000 as the scale (e.g. 500 = 50%).
-          ` },
+          { text: `Identify bounding boxes [ymin, xmin, ymax, xmax] (scale 0-1000) for Faces, ID Cards, Credit Cards. Return JSON { "regions": [[...]] }` },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
       },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            regions: {
-              type: Type.ARRAY,
-              items: { type: Type.ARRAY, items: { type: Type.NUMBER } }
-            }
-          }
-        }
-      }
+      config: { responseMimeType: "application/json" }
     });
 
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const data = JSON.parse(text);
+    const data = JSON.parse(cleanJSON(text));
     return data.regions || [];
   } catch (e) {
-    console.error("Redaction check failed", e);
     return [];
   }
 };
@@ -375,45 +254,17 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
 }> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    const response = await generateWithCascade({
+    const text = await executeSwarmRequest('VISION', {
       contents: {
         parts: [
-          { text: `
-            Analyze this image for a Lost & Found report.
-            Extract factual visual details.
-            
-            Categories: ${Object.values(ItemCategory).join(', ')}
-            
-            Instructions:
-            1. Identify the main object.
-            2. Determine the most appropriate category from the list.
-            3. List visual tags (e.g., "blue", "scratched", "sticker").
-            4. Extract brand name if visible.
-          `},
+          { text: `Analyze for Lost & Found. Extract: title, category (${Object.values(ItemCategory).join(',')}), tags, color, brand, condition, distinguishingFeatures. Return JSON.` },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
       },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            category: { type: Type.STRING, enum: Object.values(ItemCategory) },
-            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-            color: { type: Type.STRING },
-            brand: { type: Type.STRING },
-            condition: { type: Type.STRING },
-            distinguishingFeatures: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ['title', 'category', 'tags']
-        }
-      }
-    }, true); // Use Reasoning
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(cleanJSON(text));
   } catch (e) {
-    console.error("Autofill failed", e);
     return { 
       title: "", category: ItemCategory.OTHER, tags: [], 
       color: "", brand: "", condition: "", distinguishingFeatures: [] 
@@ -421,28 +272,14 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
   }
 };
 
-export const mergeDescriptions = async (
-  userContext: string, 
-  visualData: any
-): Promise<string> => {
+export const mergeDescriptions = async (userContext: string, visualData: any): Promise<string> => {
   try {
-    const response = await generateWithCascade({
+    const text = await executeSwarmRequest('TEXT', {
       contents: {
-        parts: [{ text: `
-          Task: Create a comprehensive "3D Description" for a lost item.
-          
-          Input 1 (Visual Facts from AI): ${JSON.stringify(visualData)}
-          Input 2 (User Context): "${userContext}"
-          
-          Instructions:
-          - Combine the specific visual details (scratches, brand, color) with the user's story (where lost, when).
-          - Write in natural, helpful language for a lost & found post.
-          - Keep it under 300 characters.
-          - Do NOT repeat "AI detected". Just describe the item naturally.
-        `}]
+        parts: [{ text: `Merge visual data (${JSON.stringify(visualData)}) with user context ("${userContext}") into a concise Lost & Found item description.` }]
       }
-    });
-    return response.text || userContext;
+    }, "You are a helpful copywriter.");
+    return text || userContext;
   } catch (e) {
     return userContext;
   }
@@ -454,51 +291,24 @@ export const analyzeItemDescription = async (
   title: string = ""
 ): Promise<GeminiAnalysisResult> => {
   try {
-    const parts: any[] = [{ text: `
-      Task: Enhance description and validate content for a campus Lost & Found.
-      Title: "${title}"
-      Raw Input: "${description}"
-      
-      Instructions:
-      1. Correct grammar and clarity.
-      2. Extract Item Category (Electronics, Clothing, etc).
-      3. Identify potential Policy Violations (Drugs, Weapons, Spam).
-      4. Generate a concise summary and tags.
-      5. Reasoning is enabled: Think about the category carefully based on the description and images.
-    ` }];
+    const parts: any[] = [{ text: `Analyze item: "${title} - ${description}". JSON output: isViolating (bool), violationType, category, summary, tags.` }];
     
-    base64Images.forEach(img => {
-      const data = img.split(',')[1] || img;
-      if (data) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-      }
-    });
+    // If images exist, this becomes a VISION task, otherwise TEXT
+    const taskType: TaskType = base64Images.length > 0 ? 'VISION' : 'TEXT';
 
-    const response = await generateWithCascade({
+    if (taskType === 'VISION') {
+       base64Images.forEach(img => {
+          const data = img.split(',')[1] || img;
+          if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+       });
+    }
+
+    const text = await executeSwarmRequest(taskType, {
       contents: { parts },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isViolating: { type: Type.BOOLEAN },
-            violationType: { type: Type.STRING, enum: ['GORE', 'ANIMAL', 'HUMAN', 'IRRELEVANT', 'INCONSISTENT', 'NONE'] },
-            violationReason: { type: Type.STRING },
-            category: { type: Type.STRING, enum: Object.values(ItemCategory) },
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-            distinguishingFeatures: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ['isViolating', 'title', 'description', 'category']
-        }
-      }
-    }, true); // Enable Reasoning for accurate categorization
+      config: { responseMimeType: "application/json" }
+    }, "You are a content moderator and classifier.");
 
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const result = JSON.parse(text);
-
+    const result = JSON.parse(cleanJSON(text));
     return {
       isViolating: result.isViolating || false,
       violationType: result.violationType || 'NONE',
@@ -512,12 +322,7 @@ export const analyzeItemDescription = async (
       distinguishingFeatures: result.distinguishingFeatures || [],
       faceStatus: 'NONE'
     };
-  } catch (error: any) {
-    if (error.message === "MISSING_GOOGLE_KEY") {
-        console.warn("AI Analysis Skipped: API Key missing.");
-    } else {
-        console.error("AI Analysis Error", error);
-    }
+  } catch (error) {
     return { 
       isViolating: false, isPrank: false, category: ItemCategory.OTHER, 
       title: title || "Item", description, distinguishingFeatures: [], summary: "", tags: [], faceStatus: 'NONE'
@@ -527,25 +332,11 @@ export const analyzeItemDescription = async (
 
 export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LOST' | 'FOUND' | 'NONE'; refinedQuery: string }> => {
   try {
-    const response = await generateWithCascade({
-      contents: {
-        parts: [{ text: `Determine intent (LOST/FOUND/NONE) and extract keywords for: "${query}".` }]
-      },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-             userStatus: { type: Type.STRING, enum: ['LOST', 'FOUND', 'NONE'] },
-             refinedQuery: { type: Type.STRING }
-          },
-          required: ['userStatus', 'refinedQuery']
-        }
-      }
-    });
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
+    const text = await executeSwarmRequest('TEXT', {
+      contents: { parts: [{ text: `Analyze query: "${query}". Return JSON: userStatus (LOST/FOUND/NONE), refinedQuery (keywords).` }] }
+    }, "You are a search intent analyzer.");
+    return JSON.parse(cleanJSON(text));
+  } catch (e) {
     return { userStatus: 'NONE', refinedQuery: query };
   }
 };
@@ -556,108 +347,53 @@ export const findPotentialMatches = async (
 ): Promise<{ id: string }[]> => {
   if (candidates.length === 0) return [];
   try {
-    // Only send simplified candidate data to save tokens
-    const candidateList = candidates.map(c => ({ 
-        id: c.id, 
-        title: c.title, 
-        desc: c.description,
-        cat: c.category,
-        loc: c.location
-    }));
+    // Optimization: Minimize token usage by sending minimal candidate data
+    const candidateList = candidates.map(c => ({ id: c.id, t: c.title, d: c.description, c: c.category }));
     
-    const parts: any[] = [{ text: `
-      Task: Find items in Candidates that semantically match the Source.
-      
-      Source Description: ${query.description}
-      Candidates: ${JSON.stringify(candidateList)}
-      
-      Instructions:
-      1. Analyze the 'Source' item. Understand what it is.
-      2. Iterate through 'Candidates'.
-      3. MATCH IF: The items are likely the same physical object (e.g. "Lost iPhone" vs "Found Black iPhone").
-      4. IGNORE IF: Categories or locations completely mismatch (e.g. "Lost Dog" vs "Found Keys").
-      5. Strictness: High. Only return matches if you are >70% confident.
-      
-      Return a JSON object with a list of matched IDs.
-    ` }];
-
-    if (query.imageUrls.length > 0 && query.imageUrls[0].startsWith('data:')) {
+    // If query has images, it's a VISION task, otherwise TEXT
+    const taskType = query.imageUrls.length > 0 ? 'VISION' : 'TEXT';
+    
+    const parts: any[] = [{ text: `Find semantic matches for "${query.description}" in candidates: ${JSON.stringify(candidateList)}. Return JSON { "matches": [{ "id": "..." }] }. Strictness: High.` }];
+    
+    if (taskType === 'VISION' && query.imageUrls[0]) {
        const data = query.imageUrls[0].split(',')[1];
-       parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     }
 
-    const response = await generateWithCascade({
+    const text = await executeSwarmRequest(taskType, {
       contents: { parts },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-             matches: {
-                type: Type.ARRAY,
-                items: {
-                   type: Type.OBJECT,
-                   properties: { 
-                     id: { type: Type.STRING },
-                     reason: { type: Type.STRING }
-                   },
-                   required: ['id']
-                }
-             }
-          }
-        }
-      }
-    }, true); // Enable Reasoning for better matching
-    
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    const data = JSON.parse(text);
+      config: { responseMimeType: "application/json" }
+    }, "You are a matching engine.");
+
+    const data = JSON.parse(cleanJSON(text));
     return data.matches || [];
-  } catch (e: any) {
-    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Match finding error", e);
+  } catch (e) {
+    console.error("Match error", e);
     return [];
   }
 };
 
 export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
   try {
-    const parts: any[] = [{ text: `
-      Compare Item A (${itemA.title}) and Item B (${itemB.title}).
-      Are they the same object?
-      Analyze visual similarity, description overlap, and logic (time/location).
-      
-      Reasoning required:
-      - Check if the dates make sense (Lost date <= Found date).
-      - Check if locations are plausibly close.
-      - Check visual features (color, brand, damage).
-    ` }];
+    const parts: any[] = [{ text: `Compare Item A (${itemA.title}: ${itemA.description}) vs Item B (${itemB.title}: ${itemB.description}). Return JSON: confidence (0-100), explanation, similarities (array), differences (array).` }];
     
-    const imagesToAdd = [itemA.imageUrls[0], itemB.imageUrls[0]].filter(url => url && url.startsWith('data:'));
-    imagesToAdd.forEach(img => {
-      const data = img.split(',')[1];
-      if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-    });
+    const images = [itemA.imageUrls[0], itemB.imageUrls[0]].filter(Boolean);
+    const taskType = images.length > 0 ? 'VISION' : 'TEXT';
 
-    const response = await generateWithCascade({
-      contents: { parts },
-      config: { 
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            confidence: { type: Type.NUMBER, description: "Match percentage 0-100" },
-            explanation: { type: Type.STRING },
-            similarities: { type: Type.ARRAY, items: { type: Type.STRING } },
-            differences: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ['confidence', 'explanation', 'similarities', 'differences']
-        }
-      }
-    }, true); // Enable Reasoning
+    if (taskType === 'VISION') {
+      images.forEach(img => {
+        const data = img.split(',')[1];
+        if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+      });
+    }
 
-    const text = response.text ? cleanJSON(response.text) : "{}";
-    return JSON.parse(text);
-  } catch (e: any) {
-    if (e.message !== "MISSING_GOOGLE_KEY") console.error("Comparison Error", e);
-    return { confidence: 0, explanation: "Comparison failed.", similarities: [], differences: [] };
+    const text = await executeSwarmRequest(taskType, {
+       contents: { parts },
+       config: { responseMimeType: "application/json" }
+    }, "You are a forensic analyst.");
+    
+    return JSON.parse(cleanJSON(text));
+  } catch (e) {
+    return { confidence: 0, explanation: "Comparison unavailable.", similarities: [], differences: [] };
   }
 };
