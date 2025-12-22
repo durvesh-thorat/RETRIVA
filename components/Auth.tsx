@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Loader2, ArrowRight, Eye, EyeOff, AlertCircle, Mail, Lock, User as UserIcon, BrainCircuit, Search, ShieldCheck, LockKeyhole } from 'lucide-react';
+import { Loader2, ArrowRight, Eye, EyeOff, AlertCircle, Mail, Lock, User as UserIcon, BrainCircuit, Search, ShieldCheck, LockKeyhole, Cpu } from 'lucide-react';
 import { auth, db, googleProvider } from '../services/firebase';
 
 interface AuthProps {
   onLogin: (user: User) => void;
   onShowLegal: () => void;
+  onShowFeatures: () => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal }) => {
+const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -292,17 +293,20 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal }) => {
                     </div>
                  </div>
 
-                 <div className="flex gap-4 group">
+                 {/* Under The Hood Button (Replacing 3rd Feature) */}
+                 <button onClick={onShowFeatures} className="flex gap-4 group w-full text-left transition-all hover:translate-x-1">
                     <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center shrink-0 group-hover:bg-purple-500/10 group-hover:border-purple-500/20 transition-all duration-300">
-                      <ShieldCheck className="w-5 h-5 text-purple-400" />
+                      <Cpu className="w-5 h-5 text-purple-400" />
                     </div>
                     <div>
-                       <h3 className="font-bold text-slate-200 text-sm mb-0.5">Verified Students</h3>
+                       <h3 className="font-bold text-white text-sm mb-0.5 flex items-center gap-2">
+                          UNDER THE HOOD <ArrowRight className="w-3 h-3 text-purple-400" />
+                       </h3>
                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                         A secure environment exclusively for verified campus students and staff.
+                         See how Gemini 3.0 powers our vector semantic search engine.
                        </p>
                     </div>
-                 </div>
+                 </button>
               </div>
 
               {/* Footer Stats */}
@@ -501,11 +505,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal }) => {
               </div>
            </div>
 
-           {/* Mobile Footer Links (Visible only on small screens) */}
+           {/* Mobile Footer Links */}
            <div className="mt-8 sm:hidden flex justify-center gap-6 text-[10px] font-bold text-slate-600 border-t border-slate-800/50 pt-6">
+              <button onClick={onShowFeatures} className="text-indigo-400">Under the Hood</button>
               <button onClick={onShowLegal}>Terms</button>
               <button onClick={onShowLegal}>Privacy</button>
-              <button onClick={onShowLegal}>Help</button>
            </div>
         </div>
       </div>

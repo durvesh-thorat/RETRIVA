@@ -481,11 +481,15 @@ const App: React.FC = () => {
     );
   }
 
-  // --- AUTH VIEW (Full Screen) ---
-  if (!user) {
+  // --- AUTH VIEW OR PUBLIC FEATURES ---
+  if (!user && view !== 'FEATURES') {
     return (
       <>
-        <Auth onLogin={handleLogin} onShowLegal={() => setShowLegal(true)} />
+        <Auth 
+          onLogin={handleLogin} 
+          onShowLegal={() => setShowLegal(true)} 
+          onShowFeatures={() => setView('FEATURES')}
+        />
         <AIDisclaimerModal isOpen={showLegal} onClose={() => setShowLegal(false)} />
       </>
     );
@@ -505,7 +509,7 @@ const App: React.FC = () => {
        return (
          <>
             <Dashboard 
-              user={user} 
+              user={user!} 
               reports={reports} 
               onNavigate={setView} 
               onResolve={handleResolveReport} 
@@ -527,7 +531,7 @@ const App: React.FC = () => {
     switch (view) {
       case 'DASHBOARD': return (
         <Dashboard 
-          user={user} 
+          user={user!} 
           reports={reports} 
           onNavigate={setView} 
           onResolve={handleResolveReport} 
@@ -542,7 +546,7 @@ const App: React.FC = () => {
         return (
           <ReportForm 
             type={view === 'REPORT_LOST' ? ReportType.LOST : ReportType.FOUND} 
-            user={user} 
+            user={user!} 
             initialData={editingReport || undefined}
             onSubmit={handleReportSubmit} 
             onCancel={() => { setView('DASHBOARD'); setEditingReport(null); }} 
@@ -550,7 +554,7 @@ const App: React.FC = () => {
         );
       case 'MESSAGES': return (
         <ChatView 
-          user={user} 
+          user={user!} 
           onBack={() => setView('DASHBOARD')} 
           onNotification={(t, b) => addNotification(t, b, 'message', 'MESSAGES')}
           chats={chats}
@@ -562,7 +566,7 @@ const App: React.FC = () => {
       );
       case 'PROFILE': return (
         <Profile 
-          user={user} 
+          user={user!} 
           onUpdate={setUser} 
           onBack={() => setView('DASHBOARD')} 
           onDeleteAccount={handleDeleteAccount}
@@ -570,7 +574,7 @@ const App: React.FC = () => {
         />
       );
       case 'FEATURES': return (
-        <FeaturesPage onBack={() => setView('DASHBOARD')} />
+        <FeaturesPage onBack={() => setView(user ? 'DASHBOARD' : 'AUTH')} />
       );
       default: return null;
     }
@@ -586,7 +590,7 @@ const App: React.FC = () => {
       {/* Hide standard Nav if on Features Page for immersive effect, OR keep it. 
           The design prompt requested a "Brand New Page", implies fullscreen. 
           Let's conditionally hide the main nav if view === 'FEATURES' */}
-      {view !== 'FEATURES' && (
+      {view !== 'FEATURES' && user && (
         <nav className="sticky top-0 z-40 bg-off-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6">
             <div className="max-w-7xl mx-auto h-20 flex items-center justify-between py-3">
               <div className="flex items-center gap-10">
@@ -715,6 +719,7 @@ const App: React.FC = () => {
                  <span>&copy; 2025 RETRIVA</span>
                  <div className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></div>
                  <div className="flex gap-3">
+                    <button onClick={() => setView('FEATURES')} className="hover:text-indigo-500 transition-colors uppercase tracking-wider font-bold">Under the Hood</button>
                     <button onClick={() => setShowLegal(true)} className="hover:text-indigo-500 transition-colors">Privacy & Terms</button>
                  </div>
               </div>
