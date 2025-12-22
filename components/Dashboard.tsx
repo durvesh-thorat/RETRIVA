@@ -219,7 +219,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
                  {/* Subtitle */}
                  <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-md mx-auto lg:mx-0">
-                     Reconnect with what you’ve lost using visual AI.
+                     Reconnect with what you’ve lost
                  </p>
 
                  {/* Under the Hood Button */}
