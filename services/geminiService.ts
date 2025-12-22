@@ -9,7 +9,7 @@ export interface ComparisonResult {
 }
 
 // --- CIRCUIT BREAKER CONFIGURATION ---
-const BLOCK_DURATION = 10 * 60 * 1000; // 10 Minutes (Reduced from 6h for better UX)
+const BLOCK_DURATION = 60 * 1000; // 1 Minute (Reduced for easier testing)
 const STORAGE_KEY_BLOCK = 'retriva_circuit_breaker_until';
 const STORAGE_KEY_HASH = 'retriva_api_key_hash';
 
@@ -80,12 +80,12 @@ const tripCircuitBreaker = () => {
     const liftTime = Date.now() + BLOCK_DURATION;
     localStorage.setItem(STORAGE_KEY_BLOCK, liftTime.toString());
     
-    console.error(`⛔ Gemini Circuit Breaker Tripped. All requests switched to Groq for 10 minutes.`);
+    console.error(`⛔ Gemini Circuit Breaker Tripped. All requests switched to Groq for 1 minute.`);
     
     if (typeof window !== 'undefined') {
         const event = new CustomEvent('retriva-toast', { 
             detail: { 
-                message: "Gemini overloaded. Switched to Backup AI temporarily.", 
+                message: "Gemini limits hit. Using Backup AI (1m).", 
                 type: 'alert' 
             } 
         });
@@ -102,10 +102,10 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Model Cascade List: Prioritize Reasoning Models
+// Model Cascade List: Prioritize Flash for Higher Limits/Speed
 const GOOGLE_CASCADE = [
-  'gemini-3-pro-preview',    // Best for Logic/Reasoning
-  'gemini-3-flash-preview',  // Best for Speed/Vision
+  'gemini-3-flash-preview',  // Primary: High Rate Limits & Speed
+  'gemini-3-pro-preview',    // Backup: Complex Reasoning
 ];
 
 // Fallback Model (Groq)
@@ -122,7 +122,7 @@ const cleanJSON = (text: string): string => {
   return cleaned.trim();
 };
 
-const convertGeminiToGroq = (contents: any) => {
+const convertGeminiToGroq = (contents: any, forceJsonInstructions: boolean = false) => {
   const parts = contents.parts || [];
   let fullText = "";
 
@@ -133,6 +133,10 @@ const convertGeminiToGroq = (contents: any) => {
       fullText += "\n[System Note: The user uploaded an image. Please infer details from the user's text description if available.]\n";
     }
   });
+
+  if (forceJsonInstructions) {
+    fullText += "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanations.";
+  }
 
   return [{ role: "user", content: fullText.trim() }];
 };
@@ -168,10 +172,9 @@ const runGroqFallback = async (params: any): Promise<{ text: string }> => {
   console.warn("Attempting Groq fallback...");
   if (getApiKey('GROQ')) {
     try {
-      let messages = convertGeminiToGroq(params.contents);
       const isJson = !!params.config?.responseSchema || params.config?.responseMimeType === 'application/json';
+      let messages = convertGeminiToGroq(params.contents, isJson);
       
-      // CRITICAL FIX: Groq/Llama-3 requires the word "JSON" in the prompt when json_object mode is active
       if (isJson) {
          messages.unshift({
             role: "system",
@@ -210,7 +213,8 @@ const generateWithCascade = async (
       try {
         const config = { ...params.config };
         
-        // Add Thinking Config for supported models if reasoning is requested
+        // Only use thinking budget if we are explicitly asking for reasoning AND using Pro/Preview
+        // Flash is fast enough that we often don't need explicit thinking for basic tasks
         if (useReasoning && (modelName.includes('gemini-3') || modelName.includes('gemini-2.5'))) {
            config.thinkingConfig = { thinkingBudget: 1024 }; 
         }
@@ -232,6 +236,7 @@ const generateWithCascade = async (
   }
 
   console.error("All Gemini models exhausted.");
+  // Only trip circuit breaker if it wasn't a configuration error (like missing key)
   if (lastError?.message !== 'MISSING_GOOGLE_KEY') {
       tripCircuitBreaker();
   }
