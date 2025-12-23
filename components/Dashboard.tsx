@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint, Radar, ChevronLeft, Target } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint, Radar, ChevronLeft, Target, User as UserIcon } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findSmartMatches } from '../services/geminiService';
 
@@ -87,9 +87,9 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
   );
 };
 
-// --- NEW COMPONENT: RECOVERY CONSOLE ---
-const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: ItemReport[], onCompare: any }) => {
-  const myOpenReports = useMemo(() => reports.filter(r => r.reporterId === user.id && r.status === 'OPEN' && r.type === ReportType.LOST), [reports, user.id]);
+// --- AI DISCOVERY HUB (formerly RecoveryConsole) ---
+const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: ItemReport[], onCompare: any }) => {
+  const myOpenLostReports = useMemo(() => reports.filter(r => r.reporterId === user.id && r.status === 'OPEN' && r.type === ReportType.LOST), [reports, user.id]);
   const [selectedItem, setSelectedItem] = useState<ItemReport | null>(null);
   
   // States: idle, scanning, results, error
@@ -97,10 +97,10 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
   const [matches, setMatches] = useState<{ report: ItemReport, confidence: number }[]>([]);
 
   useEffect(() => {
-    if (myOpenReports.length > 0 && !selectedItem) {
-        setSelectedItem(myOpenReports[0]);
+    if (myOpenLostReports.length > 0 && !selectedItem) {
+        setSelectedItem(myOpenLostReports[0]);
     }
-  }, [myOpenReports]);
+  }, [myOpenLostReports]);
 
   // Reset scan state when selection changes
   useEffect(() => {
@@ -115,26 +115,16 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
         const results = await findSmartMatches(selectedItem, reports);
         setMatches(results);
     } catch (e) {
-        console.error(e);
+        console.error("Discovery Scan Error:", e);
     } finally {
         setScanState('complete');
     }
   };
 
-  if (myOpenReports.length === 0) {
-      return (
-        <div className="rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 text-center flex flex-col items-center justify-center h-64">
-            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-300 dark:text-slate-600">
-                <Radar className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">System Idle</h3>
-            <p className="text-sm text-slate-500 mt-1">You have no active lost item reports to monitor.</p>
-        </div>
-      );
-  }
+  if (myOpenLostReports.length === 0) return null; // Don't show if user has no lost items
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[500px] animate-fade-in">
+    <div className="flex flex-col lg:flex-row gap-6 h-[500px] animate-fade-in mb-12">
         
         {/* SIDEBAR: My Active Cases */}
         <div className="w-full lg:w-1/3 flex flex-col gap-4 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 p-6 overflow-hidden">
@@ -142,7 +132,7 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
                 <Target className="w-4 h-4 text-indigo-500" /> Active Cases
             </h3>
             <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                {myOpenReports.map(item => (
+                {myOpenLostReports.map(item => (
                     <button
                         key={item.id}
                         onClick={() => setSelectedItem(item)}
@@ -178,8 +168,8 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
                         <Radar className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold text-white leading-none">Recovery Console</h3>
-                        <p className="text-[10px] text-slate-500 font-mono mt-1">GEMINI-2.5-FLASH-PREVIEW // ONLINE</p>
+                        <h3 className="text-sm font-bold text-white leading-none">AI Discovery Hub</h3>
+                        <p className="text-[10px] text-slate-500 font-mono mt-1">GEMINI CASCADE // ONLINE</p>
                     </div>
                 </div>
                 
@@ -232,7 +222,7 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
                         </div>
                         <div className="mt-8 space-y-2 text-center">
                             <div className="text-indigo-400 font-mono text-xs animate-pulse">ANALYZING VECTORS...</div>
-                            <div className="text-slate-500 font-mono text-[10px]">Comparing with database entries</div>
+                            <div className="text-slate-500 font-mono text-[10px]">Cycling models: Gemini 2.0 Flash → Lite</div>
                         </div>
                     </div>
                 )}
@@ -251,12 +241,12 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full overflow-y-auto pr-2 custom-scrollbar max-h-full">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full overflow-y-auto pr-2 custom-scrollbar max-h-full content-start">
                                 {matches.map(({ report, confidence }) => (
                                     <div key={report.id} className="bg-slate-800/50 border border-white/10 rounded-xl p-3 flex gap-3 hover:bg-slate-800 transition-colors group">
-                                        <div className="w-20 h-20 bg-slate-900 rounded-lg overflow-hidden shrink-0 relative">
+                                        <div className="w-20 h-20 bg-slate-900 rounded-lg overflow-hidden shrink-0 relative border border-white/5">
                                             {report.imageUrls[0] && <img src={report.imageUrls[0]} className="w-full h-full object-cover" />}
-                                            <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-white uppercase">
+                                            <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase backdrop-blur-md ${confidence > 80 ? 'bg-emerald-500/90' : 'bg-amber-500/90'}`}>
                                                 {confidence}% Match
                                             </div>
                                         </div>
@@ -288,20 +278,24 @@ const RecoveryConsole = ({ user, reports, onCompare }: { user: User, reports: It
 const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onResolve, onEditReport, onDeleteReport, onCompare, onChatStart }) => {
   const [activeTab, setActiveTab] = useState<ReportType>(ReportType.LOST);
   const [viewStatus, setViewStatus] = useState<'OPEN' | 'RESOLVED'>('OPEN');
+  const [showMyReports, setShowMyReports] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isProcessingSearch, setIsProcessingSearch] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ItemReport | null>(null);
 
   const filteredReports = useMemo(() => {
-    // Filter by Type AND Status
     let result = reports.filter(r => r.type === activeTab && r.status === viewStatus);
     
+    if (showMyReports) {
+        result = result.filter(r => r.reporterId === user.id);
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(r => r.title.toLowerCase().includes(q) || r.location.toLowerCase().includes(q));
     }
     return result.sort((a, b) => b.createdAt - a.createdAt);
-  }, [reports, activeTab, viewStatus, searchQuery]);
+  }, [reports, activeTab, viewStatus, searchQuery, showMyReports, user.id]);
 
   const handleSmartSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -326,9 +320,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           onEdit={(r) => { onEditReport(r); setSelectedReport(null); }}
           onDelete={(id) => { onDeleteReport(id); setSelectedReport(null); }}
           onNavigateToChat={(report) => { onChatStart(report); setSelectedReport(null); }}
-          onViewMatch={(r) => setSelectedReport(r)} // Switches the modal to the new item
+          onViewMatch={(r) => setSelectedReport(r)} 
           onCompare={(item1, item2) => {
-             // We close the details modal to show the full screen comparator
              setSelectedReport(null);
              onCompare(item1, item2);
           }}
@@ -370,10 +363,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                         onClick={() => onNavigate('FEATURES')}
                         className="group relative flex items-center gap-3 px-5 py-3 bg-[#0f172a]/50 hover:bg-[#0f172a] border border-white/10 hover:border-white/20 rounded-2xl transition-all duration-300 backdrop-blur-md"
                     >
-                        {/* Google Glowing Gradient Background on Hover */}
                         <div className="absolute inset-0 bg-gradient-to-r from-[#4285F4]/20 via-[#EA4335]/20 to-[#FBBC05]/20 opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
-                        
-                        {/* Bottom Border Gradient */}
                         <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#4285F4] via-[#EA4335] to-[#34A853] scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out origin-left"></div>
 
                         <div className="relative flex items-center gap-3">
@@ -384,13 +374,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1 group-hover:text-slate-300">Technical Deep Dive</p>
                               <p className="text-sm font-bold text-white leading-none">Under the Hood</p>
                            </div>
-                           {/* Google Dots */}
-                           <div className="flex gap-1 pl-2 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-x-2 group-hover:translate-x-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#4285F4] animate-bounce"></span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#EA4335] animate-bounce delay-75"></span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#FBBC05] animate-bounce delay-150"></span>
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#34A853] animate-bounce delay-200"></span>
-                           </div>
                         </div>
                     </button>
                  </div>
@@ -398,7 +381,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
 
              {/* Right Side - Buttons */}
              <div className="relative z-10 w-full max-w-sm flex flex-col gap-4">
-                 {/* Lost Button */}
                  <button 
                    onClick={() => onNavigate('REPORT_LOST')}
                    className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:border-orange-500/50 hover:-translate-y-1"
@@ -413,7 +395,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                      <ArrowRight className="ml-auto w-5 h-5 text-slate-600 group-hover:text-white group-hover:translate-x-1 transition-all" />
                  </button>
 
-                 {/* Found Button */}
                  <button 
                    onClick={() => onNavigate('REPORT_FOUND')}
                    className="w-full flex items-center gap-5 p-5 bg-[#171925] hover:bg-[#1f2233] border border-white/5 rounded-2xl group transition-all duration-300 shadow-lg hover:shadow-[0_0_30px_rgba(20,184,166,0.4)] hover:border-teal-500/50 hover:-translate-y-1"
@@ -431,21 +412,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
           </div>
       </section>
 
-      {/* AI DISCOVERY HUB REPLACEMENT */}
-      <RecoveryConsole user={user} reports={reports} onCompare={onCompare} />
+      {/* AI DISCOVERY HUB - Conditionally Rendered */}
+      <AIDiscoveryHub user={user} reports={reports} onCompare={onCompare} />
 
       {/* Main Content Feed */}
       <section className="space-y-6">
          <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center gap-4">
             
-            {/* Filter Group */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
                 <div className="flex p-1 bg-off-white dark:bg-slate-800 rounded-xl shrink-0">
                    <button onClick={() => setActiveTab(ReportType.LOST)} className={`px-4 sm:px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.LOST ? 'bg-white dark:bg-slate-700 text-orange-600 shadow-sm' : 'text-slate-500'}`}>Lost</button>
                    <button onClick={() => setActiveTab(ReportType.FOUND)} className={`px-4 sm:px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === ReportType.FOUND ? 'bg-white dark:bg-slate-700 text-teal-600 shadow-sm' : 'text-slate-500'}`}>Found</button>
                 </div>
                 
-                {/* View History Toggle */}
+                <button 
+                  onClick={() => setShowMyReports(!showMyReports)}
+                  className={`p-2.5 rounded-xl border transition-all ${showMyReports 
+                    ? 'bg-indigo-50 dark:bg-slate-800 border-indigo-200 dark:border-slate-700 text-indigo-600' 
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600'
+                  }`}
+                  title={showMyReports ? "Show All Reports" : "Show My Reports Only"}
+                >
+                   <UserIcon className="w-5 h-5" />
+                </button>
+
                 <button 
                   onClick={() => setViewStatus(prev => prev === 'OPEN' ? 'RESOLVED' : 'OPEN')}
                   className={`p-2.5 rounded-xl border transition-all ${viewStatus === 'RESOLVED' 
@@ -465,10 +455,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
             </div>
          </div>
 
-         {/* Section Title for Context */}
          <div className="flex items-center gap-2 px-2">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              {viewStatus === 'RESOLVED' ? 'Resolved Archive' : 'Active Listings'}
+              {showMyReports ? 'My ' : ''}{viewStatus === 'RESOLVED' ? 'Resolved Archive' : 'Active Listings'}
             </h3>
             <span className="text-xs text-slate-500">({filteredReports.length} items)</span>
          </div>
@@ -480,7 +469,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                   <div className="w-16 h-16 bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center mb-4">
                      {viewStatus === 'RESOLVED' ? <History className="w-8 h-8 opacity-50" /> : <SearchX className="w-8 h-8 opacity-50" />}
                   </div>
-                  <p className="font-bold">No {viewStatus === 'RESOLVED' ? 'resolved' : 'active'} items found.</p>
+                  <p className="font-bold">No {showMyReports ? 'personal' : ''} {viewStatus === 'RESOLVED' ? 'resolved' : 'active'} items found.</p>
                   <p className="text-xs mt-1">Try changing the category or search terms.</p>
                </div>
             )}

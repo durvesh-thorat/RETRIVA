@@ -70,9 +70,15 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
       setLoading(true);
       try {
         const result = await compareItems(item1, item2);
-        setAnalysis(result);
+        // Default structure if result is missing to prevent crash
+        setAnalysis(result || { 
+            confidence: 50, 
+            explanation: "Could not retrieve full analysis.", 
+            similarities: ["Comparison attempted"], 
+            differences: ["Data unavailable"] 
+        });
       } catch (e) {
-        setAnalysis({ confidence: 0, explanation: "AI Analysis unavailable right now.", similarities: [], differences: [] });
+        setAnalysis({ confidence: 0, explanation: "Comparison unavailable.", similarities: [], differences: [] });
       } finally {
         setLoading(false);
       }
@@ -82,7 +88,6 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-8 md:p-12 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
-       {/* Container - Reduced max-width to 4xl and height to 80vh for better fit */}
        <div className="w-full max-w-4xl h-[100dvh] sm:h-[80vh] md:h-[650px] relative rounded-none sm:rounded-[2rem] p-[1px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-2xl flex flex-col overflow-hidden">
           
           <div className="w-full h-full bg-white dark:bg-slate-950 rounded-none sm:rounded-[31px] overflow-hidden flex flex-col relative">
@@ -164,7 +169,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                          </div>
                       </div>
 
-                      {/* Right Panel: Score & Analysis - Reduced Width */}
+                      {/* Right Panel: Score & Analysis */}
                       <div className="w-full lg:w-[320px] bg-white dark:bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 flex flex-col lg:h-full z-10">
                          
                          <div className="flex-1 lg:overflow-y-auto p-4 sm:p-6">
