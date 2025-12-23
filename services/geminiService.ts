@@ -153,11 +153,13 @@ const parseDateVal = (dateStr: string): number => {
 };
 
 // --- HELPER: LOCAL FUZZY MATCH (FALLBACK) ---
-const performLocalFallbackMatch = (queryTitle: string, queryDescription: string, candidateList: any[]): { id: string }[] => {
-    console.log("[RETRIVA_AI] 🛠️ Executing Local Fallback Match...");
+const STOP_WORDS = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'is', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'lost', 'found', 'item', 'missing', 'looking', 'please', 'help', 'left', 'near']);
+
+const performLocalFallbackMatch = (queryTitle: string, queryDescription: string, queryCategory: ItemCategory, candidateList: any[]): { id: string }[] => {
+    console.log("[RETRIVA_AI] 🛠️ Executing Strict Local Fallback Match...");
     
-    // Normalize text: lowercase, remove punctuation, split by space
-    const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
+    // Normalize text: lowercase, remove punctuation, remove stop words
+    const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
     
     const queryTokens = new Set(normalize(queryTitle + " " + queryDescription));
     const titleTokens = new Set(normalize(queryTitle));
@@ -165,27 +167,32 @@ const performLocalFallbackMatch = (queryTitle: string, queryDescription: string,
     const matches: { id: string }[] = [];
 
     for (const c of candidateList) {
-        // Build candidate string
+        // 1. HARD CATEGORY CHECK
+        // If query category is known (not OTHER), reject any candidate with a different category (unless candidate is OTHER)
+        // This prevents "Blue Bottle" matching "Blue Wallet".
+        if (queryCategory !== ItemCategory.OTHER && c.cat !== ItemCategory.OTHER && queryCategory !== c.cat) {
+            continue;
+        }
+
         const cTitleTokens = normalize(c.title);
         const cDescTokens = normalize(c.desc);
-        const cAllTokens = [...cTitleTokens, ...cDescTokens, ...normalize(c.cat)];
+        // Exclude category name from tokens to prevent matching on the word "Electronics" etc.
+        const cAllTokens = [...cTitleTokens, ...cDescTokens]; 
         
-        // 1. Title Overlap (High Value)
         let titleMatchCount = 0;
         for (const token of cTitleTokens) {
             if (titleTokens.has(token)) titleMatchCount++;
         }
 
-        // 2. Total Overlap
         let totalMatchCount = 0;
         for (const token of cAllTokens) {
             if (queryTokens.has(token)) totalMatchCount++;
         }
 
         // SCORING
-        // If titles share at least 1 significant word (e.g. "Sony"), it's likely a match candidate.
-        // If total tokens share > 2 words.
-        if (titleMatchCount >= 1 || totalMatchCount >= 2) {
+        // Stricter than before.
+        // Needs at least 1 title word match (e.g. "Sony") OR 3+ description matches.
+        if (titleMatchCount >= 1 || totalMatchCount >= 3) {
             matches.push({ id: c.id });
         }
     }
@@ -304,7 +311,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
 export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<ItemReport[]> => {
     // NOTE: Using console.group instead of collapsed to ensure users see the logs!
     console.group(`[RETRIVA_AI] 🧠 Analyzing: "${sourceItem.title}" (${sourceItem.type})`);
-    console.log(`Source Info: ID=${sourceItem.id}, Date=${sourceItem.date}`);
+    console.log(`Source Info: ID=${sourceItem.id}, Date=${sourceItem.date}, Cat=${sourceItem.category}`);
     
     // 1. Initial Filter (Logic Funnel)
     const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST'; // Polarity
@@ -362,12 +369,12 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
     // 2. AI Semantic Filtering
     try {
-        const queryDescription = `Category: ${sourceItem.category}. Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
+        const queryDescription = `Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
         console.log("Step 3: Sending candidates to Gemini for semantic analysis...");
         
         // Use the existing findPotentialMatches function which calls Gemini
         const matchIds = await findPotentialMatches(
-            { title: sourceItem.title, description: queryDescription, imageUrls: sourceItem.imageUrls },
+            { title: sourceItem.title, description: queryDescription, imageUrls: sourceItem.imageUrls, category: sourceItem.category },
             candidates
         );
         
@@ -381,9 +388,10 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
     } catch (e) {
         console.error("AI Match Failed:", e);
         // Fallback: Local Keyword Match if API fails totally
-        const queryDesc = `${sourceItem.description} ${sourceItem.category} ${sourceItem.tags.join(' ')}`;
+        const queryDesc = `${sourceItem.description} ${sourceItem.tags.join(' ')}`;
         const candidateList = candidates.map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
-        const fallbackIds = performLocalFallbackMatch(sourceItem.title, queryDesc, candidateList);
+        
+        const fallbackIds = performLocalFallbackMatch(sourceItem.title, queryDesc, sourceItem.category, candidateList);
         
         const fallbackMatches = candidates.filter(c => fallbackIds.some(f => f.id === c.id));
         console.log(`System Fallback: Returning ${fallbackMatches.length} matches based on keywords.`);
@@ -603,13 +611,13 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
 };
 
 export const findPotentialMatches = async (
-  query: { title: string; description: string; imageUrls: string[] },
+  query: { title: string; description: string; imageUrls: string[]; category: ItemCategory },
   candidates: ItemReport[]
 ): Promise<{ id: string }[]> => {
   if (candidates.length === 0) return [];
   
   const candidateIds = candidates.map(c => c.id).sort().join(',');
-  const cacheKey = await CacheManager.generateKey({ type: 'match_v3', query, candidateIds });
+  const cacheKey = await CacheManager.generateKey({ type: 'match_v4', query, candidateIds });
   
   const cached = CacheManager.get(cacheKey);
   if (cached) return cached as any;
@@ -627,23 +635,30 @@ export const findPotentialMatches = async (
     console.log(`[RETRIVA_AI] Sending ${candidateList.length} candidates to model:`, candidateList);
     
     const parts: any[] = [{ text: `
-      Role: You are a "Lost and Found" matching engine. 
-      Goal: Find potential matches.
+      Role: You are a strict "Lost and Found" matching engine. 
+      Goal: Find candidates that represent the SAME PHYSICAL OBJECT as the Query Item.
       
       QUERY ITEM:
       - Title: "${query.title}"
+      - Category: "${query.category}"
       - Description: "${query.description}"
       
       CANDIDATES LIST: ${JSON.stringify(candidateList)}
       
       INSTRUCTIONS:
-      1. Return matches even if descriptions are vague.
-      2. If Titles share key words (e.g. "Sony" vs "Sony Headphones"), it IS A MATCH.
-      3. IGNORE minor color or condition differences.
-      4. Prioritize RECALL over PRECISION.
+      1. OBJECT IDENTITY IS KING. 
+         - A "Phone" cannot match a "Case".
+         - A "Bottle" cannot match a "Wallet".
+         - A "Bag" cannot match a "Laptop".
+      2. IGNORE shared attributes if the object type is different. (e.g. "Blue Wallet" does NOT match "Blue Bottle").
+      3. Category Check: If the Query Category is specific (e.g. Electronics), only match candidates that fit that category.
+      4. Vague Descriptions: If description is "Black item found", and query is "Black Wallet", you can match it as possible.
+      5. BRAND NAMES: Strong indicator. "Sony" matches "Sony", but verify object type (Headphones vs Camera).
+      6. PRIORITIZE RECALL, but do not hallucinate matches across disparate object types.
       
       OUTPUT FORMAT:
       Return strictly JSON: { "matches": [{ "id": "candidate_id_here" }, ...] }
+      Return empty matches [] if no candidate is the same object type.
     ` }];
     
     if (query.imageUrls[0]) {
@@ -664,7 +679,7 @@ export const findPotentialMatches = async (
     // IF GEMINI RETURNS EMPTY, FORCE LOCAL FALLBACK
     if (result.length === 0) {
         console.warn("[RETRIVA_AI] Gemini found 0 matches. FORCE running local fallback...");
-        result = performLocalFallbackMatch(query.title, query.description, candidateList);
+        result = performLocalFallbackMatch(query.title, query.description, query.category, candidateList);
     }
     
     CacheManager.set(cacheKey, result);
@@ -673,7 +688,7 @@ export const findPotentialMatches = async (
     console.error("[RETRIVA_AI] Match error", e);
     // FALLBACK ON ERROR
     const candidateList = candidates.slice(0, 30).map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
-    return performLocalFallbackMatch(query.title, query.description, candidateList);
+    return performLocalFallbackMatch(query.title, query.description, query.category, candidateList);
   }
 };
 
