@@ -262,7 +262,7 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
     if (candidates.length === 0) return [];
 
-    // Date
+    // Date Logic
     const sourceTime = parseDateVal(sourceItem.date);
     candidates = candidates.filter(r => {
         const rTime = parseDateVal(r.date);
@@ -270,10 +270,33 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
         // If I found something on day Y, it must have been lost on day Y or earlier.
         return sourceItem.type === 'LOST' ? rTime >= sourceTime : sourceTime >= rTime;
     });
-    
-    // STRICT FILTER MODE: Returning all candidates matched by Date, Status, and Polarity.
-    // AI semantic filtering has been removed to maximize recall.
-    return candidates;
+
+    // Sort by proximity to sourceTime (Closest dates first)
+    candidates.sort((a, b) => {
+        const aTime = parseDateVal(a.date);
+        const bTime = parseDateVal(b.date);
+        return Math.abs(aTime - sourceTime) - Math.abs(bTime - sourceTime);
+    });
+
+    if (candidates.length === 0) return [];
+
+    // 2. AI Semantic Filtering
+    try {
+        const queryDescription = `Title: ${sourceItem.title}. Category: ${sourceItem.category}. Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
+        
+        // Use the existing findPotentialMatches function which calls Gemini
+        const matchIds = await findPotentialMatches(
+            { description: queryDescription, imageUrls: sourceItem.imageUrls },
+            candidates
+        );
+        
+        const validIds = new Set(matchIds.map(m => m.id));
+        return candidates.filter(c => validIds.has(c.id));
+    } catch (e) {
+        console.warn("Smart match AI failed, falling back to basic date/category filtering.", e);
+        // Fallback: Strict Category Match
+        return candidates.filter(r => r.category === sourceItem.category);
+    }
 };
 
 export const instantImageCheck = async (base64Image: string): Promise<{ 
