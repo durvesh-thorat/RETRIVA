@@ -9,22 +9,18 @@ export interface ComparisonResult {
   differences: string[];
 }
 
-// --- CONFIGURATION: THE GEMINI GAUNTLET (VISION EDITION) ---
-// Focused strictly on Flash models that support Multimodal (Image) input.
-// Order: Newest/Strongest -> Oldest/Fastest
+// --- CONFIGURATION: THE EXPANDED FLASH PIPELINE ---
+// We try standard production models first, then specific versions, then experimental.
 const MODEL_PIPELINE = [
-  'gemini-3-flash-preview',      // Tier 1: 3.0 Preview (Highest Capability)
-  'gemini-2.5-flash-image',      // Tier 2: 2.5 Image Specialized
-  'gemini-2.0-flash-exp',        // Tier 3: 2.0 Experimental
-  'gemini-1.5-flash-latest',     // Tier 4: 1.5 Flash Latest Alias
-  'gemini-1.5-flash-002',        // Tier 5: 1.5 Flash Stable v002
-  'gemini-1.5-flash',            // Tier 6: 1.5 Flash Standard
-  'gemini-1.5-flash-8b'          // Tier 7: 1.5 Flash 8b (Micro/Backup)
+  'gemini-1.5-flash',           // Production Standard
+  'gemini-1.5-flash-latest',    // Latest Alias
+  'gemini-1.5-flash-001',       // Specific Version 001
+  'gemini-1.5-flash-002',       // Specific Version 002
+  'gemini-1.5-flash-8b',        // Flash 8b (Lite)
+  'gemini-2.0-flash-exp',       // 2.0 Experimental
+  'gemini-1.5-pro',             // Fallback: Pro (Standard)
+  'gemini-1.5-pro-latest'       // Fallback: Pro (Latest)
 ];
-
-const STORAGE_KEY_BANS = 'retriva_model_bans';
-const STORAGE_KEY_API_HASH = 'retriva_api_hash';
-const BAN_DURATION = 24 * 60 * 60 * 1000; // 24 Hours
 
 // --- HELPER: API KEY ---
 const getApiKey = (): string | undefined => {
@@ -49,110 +45,54 @@ const cleanJSON = (text: string): string => {
   return cleaned.trim();
 };
 
-// --- MODEL MANAGER CLASS ---
+// --- MODEL MANAGER CLASS (MEMORY ONLY) ---
 class ModelManager {
-  private bannedModels: Record<string, number> = {};
+  // We utilize in-memory banning only. 
+  // If the user refreshes, we want to try again, not be locked out for 24h.
+  private sessionBans: Set<string> = new Set();
 
-  constructor() {
-    this.checkApiKeyAndLoadBans();
+  public banModel(model: string, reason: string) {
+    console.warn(`⚠️ Skipping model ${model} for this session: ${reason}`);
+    this.sessionBans.add(model);
   }
 
-  // Generate a simple hash of the API key to detect changes
-  private hashKey(key: string): string {
-    let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      const char = key.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash.toString();
-  }
-
-  private checkApiKeyAndLoadBans() {
-    const currentKey = getApiKey();
-    if (!currentKey) return;
-
-    const currentHash = this.hashKey(currentKey);
-    const storedHash = localStorage.getItem(STORAGE_KEY_API_HASH);
-
-    // IF API KEY CHANGED: RESET EVERYTHING
-    if (storedHash !== currentHash) {
-      console.info("🔑 New API Key detected. Clearing all model bans.");
-      localStorage.setItem(STORAGE_KEY_API_HASH, currentHash);
-      localStorage.removeItem(STORAGE_KEY_BANS);
-      this.bannedModels = {};
-      return;
-    }
-
-    // Load existing bans
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_BANS);
-      if (stored) {
-        this.bannedModels = JSON.parse(stored);
-        
-        // Clean up expired bans immediately on load
-        const now = Date.now();
-        let changed = false;
-        Object.keys(this.bannedModels).forEach(model => {
-          if (now > this.bannedModels[model]) {
-            delete this.bannedModels[model];
-            changed = true;
-          }
-        });
-        if (changed) this.saveBans();
-      }
-    } catch (e) {
-      console.warn("Failed to load model bans", e);
-    }
-  }
-
-  private saveBans() {
-    localStorage.setItem(STORAGE_KEY_BANS, JSON.stringify(this.bannedModels));
-  }
-
-  public banModel(model: string, reason: string = "Quota Exceeded") {
-    console.warn(`⛔ BANNING MODEL: ${model} for 24 hours (${reason}).`);
-    this.bannedModels[model] = Date.now() + BAN_DURATION;
-    this.saveBans();
+  public resetBans() {
+    console.info("🔄 Resetting model bans for retry...");
+    this.sessionBans.clear();
   }
 
   public getAvailableModels(): string[] {
-    const now = Date.now();
-    return MODEL_PIPELINE.filter(model => {
-      const banTime = this.bannedModels[model];
-      if (!banTime) return true; // Not banned
-      if (now > banTime) {
-        // Ban expired
-        delete this.bannedModels[model];
-        this.saveBans();
-        return true;
-      }
-      return false; // Still banned
-    });
+    return MODEL_PIPELINE.filter(model => !this.sessionBans.has(model));
   }
 }
 
 const modelManager = new ModelManager();
 
 // --- CORE GENERATION FUNCTION ---
-const generateWithGauntlet = async (params: any, systemInstruction?: string): Promise<string> => {
+const generateWithGauntlet = async (params: any, systemInstruction?: string, retryCount = 0): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("MISSING_API_KEY");
 
-  const pipeline = modelManager.getAvailableModels();
+  let pipeline = modelManager.getAvailableModels();
+
+  // SELF-HEALING: If we ran out of models, reset bans and try one more time.
+  if (pipeline.length === 0 && retryCount === 0) {
+    modelManager.resetBans();
+    pipeline = modelManager.getAvailableModels();
+  }
 
   if (pipeline.length === 0) {
-    // Dispatch event to notify UI that we are totally out of ammo
-    if (typeof window !== 'undefined') {
+     // If still empty after reset, we are truly stuck.
+     if (typeof window !== 'undefined') {
         const event = new CustomEvent('retriva-toast', { 
             detail: { 
-                message: "All AI models exhausted/unavailable. Please try again later.", 
+                message: "Connection to AI models failed. Please check API Key or Quota.", 
                 type: 'alert' 
             } 
         });
         window.dispatchEvent(event);
     }
-    throw new Error("ALL_MODELS_EXHAUSTED_24H");
+    throw new Error("ALL_MODELS_FAILED");
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -160,16 +100,15 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
 
   for (const model of pipeline) {
     try {
-      // Clean config (remove unsupported fields if jumping between model generations)
+      // Clean config to be safe across models
       const config = { ...params.config };
-      delete config.thinkingConfig; // Ensure stability across different model tiers
+      delete config.thinkingConfig; // Not all models support thinking
       
-      // Inject system instruction if provided (and not already in contents)
       if (systemInstruction) {
          config.systemInstruction = systemInstruction;
       }
 
-      // console.log(`🚀 Trying Model: ${model}`); // Debug log
+      // console.log(`🚀 Attempting: ${model}`); 
 
       const response = await ai.models.generateContent({
         ...params,
@@ -177,42 +116,40 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
         config
       });
 
-      console.log(`✅ Success with: ${model}`);
+      // If we get here, it worked!
       return response.text || "";
 
     } catch (error: any) {
       const msg = (error.message || "").toLowerCase();
       const status = error.status || 0;
       
-      // 1. QUOTA EXHAUSTED (429) -> PERMANENT BAN
-      if (msg.includes("429") || msg.includes("quota") || msg.includes("exhausted") || status === 429) {
-        modelManager.banModel(model, "429 Quota Exceeded");
-        continue;
-      }
-
-      // 2. MODEL NOT FOUND (404) -> PERMANENT BAN
-      // This prevents retrying invalid model IDs or models not available in your region
-      if (msg.includes("404") || msg.includes("not found") || status === 404) {
-        modelManager.banModel(model, "404 Not Found");
-        continue;
+      // LOGIC:
+      // 404: Model doesn't exist (or alias invalid) -> Skip for session
+      // 429: Quota exceeded -> Skip for session
+      // 503: Overloaded -> Skip (maybe retry later, but for now skip)
+      
+      if (status === 404 || msg.includes('not found')) {
+         modelManager.banModel(model, "404 Not Found");
+      } else if (status === 429 || msg.includes('quota') || msg.includes('exhausted')) {
+         modelManager.banModel(model, "429 Quota Exceeded");
+      } else {
+         // Other errors (500, 503, etc)
+         console.warn(`❌ Error with ${model}: ${msg}`);
+         // We usually skip these too to try the next best model
       }
       
-      // 3. OVERLOADED (503) -> SKIP ONCE (Do not ban)
-      if (msg.includes("503") || msg.includes("overloaded") || status === 503) {
-        console.warn(`⚠️ Model ${model} overloaded. Skipping temporarily.`);
-        lastError = error;
-        continue;
-      }
-
-      // 4. INVALID ARGUMENT (400) -> SKIP ONCE
-      // Often happens if a text-only model receives an image, though our pipeline is all Vision.
-      console.warn(`❌ Model ${model} error: ${msg}`);
       lastError = error;
-      continue; 
+      continue; // Try next model
     }
   }
 
-  throw lastError || new Error("All available models failed.");
+  // If we exit the loop, all models in the current pipeline failed.
+  // If we haven't retried yet, trigger the self-healing recursion
+  if (retryCount === 0) {
+     return generateWithGauntlet(params, systemInstruction, 1);
+  }
+
+  throw lastError || new Error("All AI models failed to respond.");
 };
 
 
@@ -239,6 +176,7 @@ export const instantImageCheck = async (base64Image: string): Promise<{
     return JSON.parse(cleanJSON(text));
   } catch (e) {
     console.error(e);
+    // Fail open (allow) but warn, or fail closed? Let's fail safe (no violation detected if AI fails)
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
 };
@@ -338,6 +276,7 @@ export const analyzeItemDescription = async (
       faceStatus: 'NONE'
     };
   } catch (error) {
+    // Return safe default if analysis fails
     return { 
       isViolating: false, isPrank: false, category: ItemCategory.OTHER, 
       title: title || "Item", description, distinguishingFeatures: [], summary: "", tags: [], faceStatus: 'NONE'
@@ -364,20 +303,33 @@ export const findPotentialMatches = async (
   try {
     const candidateList = candidates.map(c => ({ id: c.id, t: c.title, d: c.description, c: c.category }));
     
-    const parts: any[] = [{ text: `Find matches for "${query.description}" in: ${JSON.stringify(candidateList)}. Return JSON { "matches": [{ "id": "..." }] }.` }];
+    // Limit candidates per batch to avoid token limits
+    const BATCH_SIZE = 10;
+    const allMatches: { id: string }[] = [];
+
+    for (let i = 0; i < candidateList.length; i += BATCH_SIZE) {
+        const batch = candidateList.slice(i, i + BATCH_SIZE);
+        const parts: any[] = [{ text: `Find matches for "${query.description}" in: ${JSON.stringify(batch)}. Return JSON { "matches": [{ "id": "..." }] }.` }];
     
-    if (query.imageUrls[0]) {
-       const data = query.imageUrls[0].split(',')[1];
-       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+        if (query.imageUrls[0]) {
+            const data = query.imageUrls[0].split(',')[1];
+            if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+        }
+
+        try {
+            const text = await generateWithGauntlet({
+                contents: { parts },
+                config: { responseMimeType: "application/json" }
+            }, "You are a matching engine.");
+            
+            const data = JSON.parse(cleanJSON(text));
+            if (data.matches) allMatches.push(...data.matches);
+        } catch (e) {
+            console.warn("Batch match failed", e);
+        }
     }
-
-    const text = await generateWithGauntlet({
-      contents: { parts },
-      config: { responseMimeType: "application/json" }
-    }, "You are a matching engine.");
-
-    const data = JSON.parse(cleanJSON(text));
-    return data.matches || [];
+    
+    return allMatches;
   } catch (e) {
     console.error("Match error", e);
     return [];
