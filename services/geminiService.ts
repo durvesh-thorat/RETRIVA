@@ -10,12 +10,17 @@ export interface ComparisonResult {
 }
 
 // --- CONFIGURATION ---
+// Expanded Pipeline to include Gemini 3, 2.5, and 2.0 Flash variants as requested
 const MODEL_PIPELINE = [
   'gemini-3-flash-preview',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-image',
+  'gemini-2.5-flash-preview',
+  'gemini-2.5-flash-lite-preview',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite'
+  'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-2.0-flash-exp',
+  // Fallbacks
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-pro-exp-02-05' 
 ];
 
 const CACHE_PREFIX = 'retriva_ai_cache_';
@@ -272,6 +277,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
                 config.systemInstruction = systemInstruction;
             }
 
+            console.log(`[RETRIVA_AI] 🚀 Attempting with model: ${model}`);
             const response = await ai.models.generateContent({
                 ...params,
                 model,
@@ -636,7 +642,7 @@ export const findPotentialMatches = async (
         id: c.id, 
         title: c.title, 
         desc: c.description, 
-        cat: c.category,
+        cat: c.category, 
         tags: c.tags 
     }));
 
