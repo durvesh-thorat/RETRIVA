@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chat, User, Message } from '../types';
 import { Send, Search, ArrowLeft, MessageCircle, Check, CheckCheck, Paperclip, File, ShieldBan, ShieldCheck, Lock, Globe, Users, Trash2, Home, X, Pin, ChevronDown, Clock } from 'lucide-react';
@@ -45,11 +46,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
      return selectedChat?.participants.find(p => p !== user.id);
   }, [selectedChat, user.id]);
 
-  // TYPING INDICATOR LOGIC: Check specifically if the *other* user is typing
+  // TYPING INDICATOR LOGIC: Check if ANY other user is typing (Robust for Global & Direct)
   const isOtherUserTyping = useMemo(() => {
-     if (!selectedChat?.typing || !otherParticipantId) return false;
-     return selectedChat.typing[otherParticipantId] === true;
-  }, [selectedChat, otherParticipantId]);
+     if (!selectedChat?.typing) return false;
+     return Object.entries(selectedChat.typing).some(([uid, isTyping]) => uid !== user.id && isTyping === true);
+  }, [selectedChat, user.id]);
 
   // 0. Listen to Subcollection Messages
   useEffect(() => {
@@ -57,6 +58,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
         setSubcollectionMessages([]);
         return;
     }
+
+    // Explicitly clear messages when ID changes to prevent stale data usage in other effects
+    setSubcollectionMessages([]);
 
     const messagesRef = db.collection('chats').doc(activeChatId).collection('messages');
     const q = messagesRef.orderBy('timestamp', 'asc');
@@ -71,7 +75,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
         console.error("Error fetching subcollection messages:", error);
     });
 
-    return () => unsubscribe();
+    return () => {
+        unsubscribe();
+        setSubcollectionMessages([]); // Ensure cleanup to avoid race conditions
+    };
   }, [activeChatId]);
 
   // Merge Legacy Array Messages with New Subcollection Messages
@@ -104,7 +111,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
            const chatRef = db.collection('chats').doc(activeChatId);
            batch.update(chatRef, { unreadCount: 0 });
 
-           batch.commit().catch(e => console.error("Error marking read:", e));
+           batch.commit().catch(e => {
+               // Ignore "No document to update" errors which happen during rapid switching
+               if (!e.message?.includes('No document to update')) {
+                   console.error("Error marking read:", e);
+               }
+           });
        }
     }
   }, [activeChatId, subcollectionMessages, user.id]);
@@ -160,7 +172,18 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
       }
   };
 
-  // 4. Handle Typing
+  // 4. Handle Typing & Cleanup
+  useEffect(() => {
+      // Cleanup typing status when unmounting or switching chats
+      return () => {
+          if (activeChatId && user.id) {
+              db.collection('chats').doc(activeChatId).update({ 
+                  [`typing.${user.id}`]: false 
+              }).catch(() => {});
+          }
+      };
+  }, [activeChatId, user.id]);
+
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setNewMessage(e.target.value);
       
@@ -175,7 +198,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, onBack, onNotification, chats
       
       typingTimeoutRef.current = setTimeout(() => {
           setTyping(false);
-          db.collection('chats').doc(activeChatId).update({ [`typing.${user.id}`]: false }).catch(() => {});
+          if (activeChatId) {
+             db.collection('chats').doc(activeChatId).update({ [`typing.${user.id}`]: false }).catch(() => {});
+          }
       }, 3000);
   };
 
