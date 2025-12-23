@@ -153,34 +153,44 @@ const parseDateVal = (dateStr: string): number => {
 };
 
 // --- HELPER: LOCAL FUZZY MATCH (FALLBACK) ---
-const performLocalFallbackMatch = (queryDescription: string, candidateList: any[]): { id: string }[] => {
+const performLocalFallbackMatch = (queryTitle: string, queryDescription: string, candidateList: any[]): { id: string }[] => {
+    console.log("[RETRIVA_AI] 🛠️ Executing Local Fallback Match...");
+    
     // Normalize text: lowercase, remove punctuation, split by space
     const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
     
-    // Extract tokens from query (Title + Desc + Category + Tags)
-    const queryTokens = new Set(normalize(queryDescription));
+    const queryTokens = new Set(normalize(queryTitle + " " + queryDescription));
+    const titleTokens = new Set(normalize(queryTitle));
     
     const matches: { id: string }[] = [];
 
     for (const c of candidateList) {
         // Build candidate string
-        const cText = `${c.title} ${c.desc} ${c.cat} ${c.tags ? c.tags.join(' ') : ''}`;
-        const cTokens = normalize(cText);
+        const cTitleTokens = normalize(c.title);
+        const cDescTokens = normalize(c.desc);
+        const cAllTokens = [...cTitleTokens, ...cDescTokens, ...normalize(c.cat)];
         
-        // Count overlapping tokens
-        let matchCount = 0;
-        for (const token of cTokens) {
-            if (queryTokens.has(token)) matchCount++;
+        // 1. Title Overlap (High Value)
+        let titleMatchCount = 0;
+        for (const token of cTitleTokens) {
+            if (titleTokens.has(token)) titleMatchCount++;
         }
 
-        // HEURISTIC:
-        // If > 2 matching significant words, or if it's a short query and 50% match.
-        // This is a loose fallback to ensure we return SOMETHING if AI fails or is too strict.
-        if (matchCount >= 2 || (queryTokens.size < 4 && matchCount >= 1)) {
+        // 2. Total Overlap
+        let totalMatchCount = 0;
+        for (const token of cAllTokens) {
+            if (queryTokens.has(token)) totalMatchCount++;
+        }
+
+        // SCORING
+        // If titles share at least 1 significant word (e.g. "Sony"), it's likely a match candidate.
+        // If total tokens share > 2 words.
+        if (titleMatchCount >= 1 || totalMatchCount >= 2) {
             matches.push({ id: c.id });
         }
     }
     
+    console.log(`[RETRIVA_AI] 🛠️ Local Fallback found ${matches.length} matches.`);
     return matches;
 };
 
@@ -352,12 +362,12 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
     // 2. AI Semantic Filtering
     try {
-        const queryDescription = `Title: ${sourceItem.title}. Category: ${sourceItem.category}. Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
+        const queryDescription = `Category: ${sourceItem.category}. Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
         console.log("Step 3: Sending candidates to Gemini for semantic analysis...");
         
         // Use the existing findPotentialMatches function which calls Gemini
         const matchIds = await findPotentialMatches(
-            { description: queryDescription, imageUrls: sourceItem.imageUrls },
+            { title: sourceItem.title, description: queryDescription, imageUrls: sourceItem.imageUrls },
             candidates
         );
         
@@ -371,8 +381,9 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
     } catch (e) {
         console.error("AI Match Failed:", e);
         // Fallback: Local Keyword Match if API fails totally
-        const queryDesc = `${sourceItem.title} ${sourceItem.description} ${sourceItem.category} ${sourceItem.tags.join(' ')}`;
-        const fallbackIds = performLocalFallbackMatch(queryDesc, candidates.map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags })));
+        const queryDesc = `${sourceItem.description} ${sourceItem.category} ${sourceItem.tags.join(' ')}`;
+        const candidateList = candidates.map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
+        const fallbackIds = performLocalFallbackMatch(sourceItem.title, queryDesc, candidateList);
         
         const fallbackMatches = candidates.filter(c => fallbackIds.some(f => f.id === c.id));
         console.log(`System Fallback: Returning ${fallbackMatches.length} matches based on keywords.`);
@@ -592,13 +603,13 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
 };
 
 export const findPotentialMatches = async (
-  query: { description: string; imageUrls: string[] },
+  query: { title: string; description: string; imageUrls: string[] },
   candidates: ItemReport[]
 ): Promise<{ id: string }[]> => {
   if (candidates.length === 0) return [];
   
   const candidateIds = candidates.map(c => c.id).sort().join(',');
-  const cacheKey = await CacheManager.generateKey({ type: 'match_v2', query, candidateIds });
+  const cacheKey = await CacheManager.generateKey({ type: 'match_v3', query, candidateIds });
   
   const cached = CacheManager.get(cacheKey);
   if (cached) return cached as any;
@@ -617,22 +628,22 @@ export const findPotentialMatches = async (
     
     const parts: any[] = [{ text: `
       Role: You are a "Lost and Found" matching engine. 
-      Goal: Find potential matches for a lost item among a list of found items (or vice versa).
+      Goal: Find potential matches.
       
-      Query Item: "${query.description}"
+      QUERY ITEM:
+      - Title: "${query.title}"
+      - Description: "${query.description}"
       
-      Candidates List: ${JSON.stringify(candidateList)}
+      CANDIDATES LIST: ${JSON.stringify(candidateList)}
       
       INSTRUCTIONS:
-      1. Analyze the 'Query Item' and compare it with each 'Candidate'.
-      2. Return a list of Candidate IDs that are "Possible Matches".
-      3. BE LENIENT. We want high recall. If an item is the same Category (e.g. both are 'phones') and shares ANY distinct keyword (e.g. 'Samsung', 'Black', ' cracked screen'), include it.
-      4. Ignore minor discrepancies in description length or detail level.
-      5. If the Query mentions a specific brand (e.g. "Sony"), prioritize candidates with that brand, but also include generic items if they *could* be that brand.
+      1. Return matches even if descriptions are vague.
+      2. If Titles share key words (e.g. "Sony" vs "Sony Headphones"), it IS A MATCH.
+      3. IGNORE minor color or condition differences.
+      4. Prioritize RECALL over PRECISION.
       
       OUTPUT FORMAT:
       Return strictly JSON: { "matches": [{ "id": "candidate_id_here" }, ...] }
-      If no matches found, return { "matches": [] }
     ` }];
     
     if (query.imageUrls[0]) {
@@ -650,10 +661,10 @@ export const findPotentialMatches = async (
     const data = JSON.parse(cleanJSON(text));
     let result = Array.isArray(data) ? data : (data.matches || []);
     
-    // IF GEMINI RETURNS EMPTY, TRY LOCAL FALLBACK
+    // IF GEMINI RETURNS EMPTY, FORCE LOCAL FALLBACK
     if (result.length === 0) {
-        console.warn("[RETRIVA_AI] Gemini found 0 matches. Attempting local fallback...");
-        result = performLocalFallbackMatch(query.description, candidateList);
+        console.warn("[RETRIVA_AI] Gemini found 0 matches. FORCE running local fallback...");
+        result = performLocalFallbackMatch(query.title, query.description, candidateList);
     }
     
     CacheManager.set(cacheKey, result);
@@ -662,7 +673,7 @@ export const findPotentialMatches = async (
     console.error("[RETRIVA_AI] Match error", e);
     // FALLBACK ON ERROR
     const candidateList = candidates.slice(0, 30).map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
-    return performLocalFallbackMatch(query.description, candidateList);
+    return performLocalFallbackMatch(query.title, query.description, candidateList);
   }
 };
 
