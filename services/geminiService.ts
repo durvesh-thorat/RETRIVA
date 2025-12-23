@@ -20,14 +20,15 @@ const MODEL_ROLES = {
   VISION: 'gemini-2.5-flash-preview', 
   
   // SPEED & VOLUME: Fastest model for iterating through database candidates
-  SCANNER: 'gemini-2.5-flash-lite-preview' 
+  // NOTE: Using 2.0 Lite as 2.5 Lite ID is currently unavailable/causing 404s
+  SCANNER: 'gemini-2.0-flash-lite-preview-02-05' 
 };
 
 // Fallback pipeline (Strictly Flash models only)
 const FALLBACK_PIPELINE = [
-  'gemini-3-flash-preview',
+  'gemini-2.0-flash-lite-preview-02-05',
   'gemini-2.5-flash-preview',
-  'gemini-2.5-flash-lite-preview'
+  'gemini-3-flash-preview'
 ];
 
 const CACHE_PREFIX = 'retriva_ai_cache_';
@@ -408,7 +409,7 @@ export const instantImageCheck = async (base64Image: string): Promise<{
         ]
       },
       config: { responseMimeType: "application/json" }
-    }, undefined, MODEL_ROLES.VISION); // <-- Explicitly requesting Vision Model
+    }, undefined, MODEL_ROLES.VISION);
 
     const parsed = JSON.parse(cleanJSON(text));
     const result = {
@@ -505,7 +506,6 @@ export const mergeDescriptions = async (userDistinguishingFeatures: string, visu
 
   try {
     // --- STRATEGY: Use REASONING Model (3.0 Flash) ---
-    // Updated Prompt to treat user input as distinguishing features
     const text = await generateWithGauntlet({
       contents: {
         parts: [{ text: `
