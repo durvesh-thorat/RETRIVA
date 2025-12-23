@@ -282,7 +282,7 @@ export const instantImageCheck = async (base64Image: string): Promise<{
   violationType: 'GORE' | 'ANIMAL' | 'HUMAN' | 'NONE';
   reason: string;
 }> => {
-  const cacheKey = await CacheManager.generateKey({ type: 'imgCheck', data: base64Image });
+  const cacheKey = await CacheManager.generateKey({ type: 'imgCheck_v3', data: base64Image });
   const cached = CacheManager.get(cacheKey);
   if (cached) return cached as any;
 
@@ -291,10 +291,24 @@ export const instantImageCheck = async (base64Image: string): Promise<{
     const text = await generateWithGauntlet({
       contents: {
         parts: [
-          { text: `SYSTEM: Security Scan. Analyze image for violations. 
-            Policies: 1. GORE (bloody) 2. NUDITY 3. PRIVACY (docs). 
-            Return JSON: violationType ("GORE","NUDITY","PRIVACY","NONE"), isPrank, reason.
-            If safe, violationType="NONE".` 
+          { text: `SYSTEM: Security Scan. Analyze image for lost & found safety.
+            
+            STRICT POLICIES:
+            1. REJECT 'GORE': Bloody, violent, or disturbing content.
+            2. REJECT 'NUDITY': Explicit content.
+            3. REJECT 'HUMAN': Selfies, portraits, or photos where a person is the main subject.
+               - If the image is just a person's face/body with no clear lost item -> REJECT.
+               - If the image contains a person holding an item -> ALLOW (NONE).
+            4. ALLOW 'DOCUMENTS': ID Cards, Passports, Papers with faces. 
+               - Even if it contains a face, if it is a document -> ALLOW (NONE). (We will redact it later).
+            
+            Return JSON:
+            {
+              "violationType": "GORE" | "NUDITY" | "HUMAN" | "NONE",
+              "isPrank": boolean,
+              "reason": "User-friendly rejection message or 'Safe'"
+            }
+            ` 
           },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ItemReport, ReportType, ItemCategory, User } from '../types';
 import { analyzeItemDescription, instantImageCheck, extractVisualDetails, mergeDescriptions, detectRedactionRegions } from '../services/geminiService';
@@ -144,22 +143,41 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
       const reader = new FileReader();
       reader.onloadend = async () => {
         let base64 = reader.result as string;
+        // Keep original for analysis before we potentially blur it
+        const originalBase64 = base64; 
         
         // Optimistic UI update: Store base64 for preview
         setImageStatuses(prev => [...prev, { url: base64, file: file, status: 'checking' }]);
-        
-        // Use the length before adding the new one for the removal index (N)
         const newImageIndex = imageStatuses.length; 
 
-        // A. Redaction Check (Documents/Faces/PII)
+        // A. Security & Policy Check (FIRST - on original image)
+        // We reject selfies/gore BEFORE wasting time redacting.
+        try {
+            const security = await instantImageCheck(originalBase64);
+            if (security.violationType !== 'NONE') {
+                setImageStatuses(prev => prev.map((s, i) => i === newImageIndex ? { ...s, status: 'prank' } : s));
+                setAiFeedback({ 
+                    severity: 'BLOCK', 
+                    type: security.violationType, 
+                    message: security.reason || "Image rejected by safety policy.", 
+                    onAction: () => removeImage(newImageIndex) 
+                });
+                return; // STOP PROCESS
+            }
+        } catch (e) {
+            console.warn("Security check skipped/failed", e);
+        }
+
+        // B. Redaction Check (Documents/Faces/PII)
         setIsRedacting(true);
         let wasRedacted = false;
         try {
-          const regions = await detectRedactionRegions(base64);
+          // Detect sensitive regions on the ORIGINAL image
+          const regions = await detectRedactionRegions(originalBase64);
           if (regions.length > 0) {
             // Apply Redaction
-            const redactedBase64 = await blurImageRegions(base64, regions);
-            base64 = redactedBase64;
+            const redactedBase64 = await blurImageRegions(originalBase64, regions);
+            base64 = redactedBase64; // Update base64 to be the safe version
             
             // Convert back to File for upload
             const res = await fetch(redactedBase64);
@@ -169,8 +187,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
             // Update state with Redacted Image
             setImageStatuses(prev => {
               const newState = [...prev];
-              // Replace the last added item (current)
-              newState[newState.length - 1] = { 
+              // Replace the item we added
+              newState[newImageIndex] = { 
                 url: redactedBase64, 
                 file: redactedFile, 
                 status: 'redacted' 
@@ -186,27 +204,15 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
           setIsRedacting(false);
         }
 
-        // B. Security Check (If not redacted already, or check redacted version)
-        const security = await instantImageCheck(base64);
-        if (security.violationType !== 'NONE') {
-           setImageStatuses(prev => prev.map(s => s.url === base64 ? { ...s, status: 'prank' } : s));
-           setAiFeedback({ 
-               severity: 'BLOCK', 
-               type: security.violationType, 
-               message: security.reason || "Image blocked: Policy Violation", 
-               onAction: () => removeImage(newImageIndex) 
-           });
-           return;
-        }
-
         if (!wasRedacted) {
-           setImageStatuses(prev => prev.map(s => s.url === base64 ? { ...s, status: 'valid' } : s));
+           setImageStatuses(prev => prev.map((s, i) => i === newImageIndex ? { ...s, status: 'valid' } : s));
         }
 
         // C. Autofill (Only if it's the first image)
         if (imageStatuses.length === 0) {
            setIsAutofilling(true);
            try {
+             // We can use the redacted base64 for this, usually safe enough for object detection
              const details = await extractVisualDetails(base64);
              // Fill fields if empty
              if (!title) setTitle(details.title);
@@ -486,7 +492,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
                     
                     <p className="mt-3 text-[10px] text-slate-400 flex items-center gap-1.5">
                        <Info className="w-3 h-3" /> 
-                       Photos with faces or ID cards will be auto-blurred.
+                       Photos with faces or ID cards will be auto-blurred. Selfies are not allowed.
                     </p>
                  </div>
 
