@@ -9,15 +9,14 @@ export interface ComparisonResult {
   differences: string[];
 }
 
-// --- CONFIGURATION: THE RESILIENT PIPELINE ---
-// Prioritizing 2.0 Flash Exp as logs showed it existed (returned 429), while others returned 404.
+// --- CONFIGURATION: THE MODERN PIPELINE ---
+// Updated to use specific stable identifiers for Gemini 3.0 and 2.5 series.
 const MODEL_PIPELINE = [
-  'gemini-2.0-flash-exp',        // Found in logs (hit quota)
-  'gemini-1.5-flash',            // Standard Production
-  'gemini-1.5-flash-8b',         // Lightweight / Newer
-  'gemini-1.5-flash-latest',     // Alias
-  'gemini-1.5-pro',              // Fallback
-  'gemini-2.0-pro-exp-02-05'     // Experimental Pro
+  'gemini-3-flash-preview',   // Primary: Frontier-level visual reasoning
+  'gemini-2.5-flash',         // Stable 2.5: 1M token context window
+  'gemini-2.5-flash-image',   // Specialized: Image editing/reasoning
+  'gemini-2.0-flash',         // Stable GA: Standard production model
+  'gemini-2.0-flash-lite'     // Lite: High-frequency, low-cost
 ];
 
 // --- HELPER: API KEY ---
@@ -73,7 +72,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
   const pipeline = modelManager.getAvailableModels();
   
   if (pipeline.length === 0) {
-     throw new Error("No available models.");
+     throw new Error("No available models. Please check your API Key permissions.");
   }
 
   let lastError: any = null;
@@ -83,17 +82,18 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
     let retries = 0;
     const MAX_RETRIES = 3; // Retry the SAME model up to 3 times if it's busy
 
+    // Inner Loop: Retry the SAME model if it is just busy (429/503)
     while (retries <= MAX_RETRIES) {
         try {
             // Clean config
             const config = { ...params.config };
-            delete config.thinkingConfig;
+            delete config.thinkingConfig; // Ensure compatibility
             
             if (systemInstruction) {
                 config.systemInstruction = systemInstruction;
             }
 
-            // console.log(`🚀 Trying ${model} (Attempt ${retries + 1})`);
+            // console.log(`🚀 Sending to ${model} (Attempt ${retries + 1})`);
 
             const response = await ai.models.generateContent({
                 ...params,
@@ -107,34 +107,35 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
             const msg = (error.message || "").toLowerCase();
             const status = error.status || 0;
 
-            // 1. MODEL NOT FOUND (404)
-            // Immediate failover to next model, ban this one.
-            if (status === 404 || msg.includes('not found')) {
-                modelManager.banModel(model, "404 Not Found");
-                break; // Break retry loop, move to next model in pipeline
+            // 1. MODEL NOT FOUND (404) or INVALID ARGUMENT (400)
+            // This model name is wrong for this key/region. Ban it and move to next model immediately.
+            if (status === 404 || msg.includes('not found') || status === 400) {
+                modelManager.banModel(model, `Status ${status}: ${msg}`);
+                break; // Break inner loop, outer loop moves to next model
             }
 
             // 2. RATE LIMIT (429) or OVERLOAD (503)
-            // Wait and retry the SAME model.
+            // The model exists but is busy. Wait and retry.
             if (status === 429 || status === 503 || msg.includes('quota') || msg.includes('overloaded')) {
                 retries++;
                 if (retries <= MAX_RETRIES) {
-                    const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2s, 4s, 8s
-                    console.warn(`⏳ ${model} busy (429/503). Retrying in ${waitTime}ms...`);
+                    // Exponential backoff: 2s, 4s, 8s
+                    const waitTime = Math.pow(2, retries) * 1000; 
+                    console.warn(`⏳ ${model} is busy (429). Retrying in ${waitTime/1000}s...`);
                     await delay(waitTime);
-                    continue; // Retry same model
+                    continue; // Continue inner loop (retry same model)
                 } else {
-                    console.warn(`❌ ${model} exhausted retries. Moving to next model.`);
+                    console.warn(`❌ ${model} exhausted retries. Failing over to next model.`);
                     lastError = error;
-                    break; // Break retry loop, move to next model
+                    break; // Break inner loop, outer loop moves to next model
                 }
             }
 
-            // 3. OTHER ERRORS (400, 500)
+            // 3. OTHER ERRORS (500, Unknown)
             // Log and try next model immediately
             console.warn(`❌ Error with ${model}: ${msg}`);
             lastError = error;
-            break; // Break retry loop, move to next model
+            break; // Break inner loop, outer loop moves to next model
         }
     }
   }
@@ -143,7 +144,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
   if (typeof window !== 'undefined') {
       const event = new CustomEvent('retriva-toast', { 
           detail: { 
-              message: "AI Service Busy. Please try again in a moment.", 
+              message: "AI Service is currently high-traffic. Please wait a moment.", 
               type: 'alert' 
           } 
       });
