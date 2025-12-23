@@ -10,17 +10,24 @@ export interface ComparisonResult {
 }
 
 // --- CONFIGURATION ---
-// Expanded Pipeline to include Gemini 3, 2.5, and 2.0 Flash variants as requested
-const MODEL_PIPELINE = [
+
+// 1. Define specific roles for models based on user request
+const MODEL_ROLES = {
+  // LOGIC & CREATIVE: Best for writing descriptions and complex comparisons
+  REASONING: 'gemini-3-flash-preview', 
+  
+  // VISION & SAFETY: Balanced model for safety checks and coordinate detection
+  VISION: 'gemini-2.5-flash-preview', 
+  
+  // SPEED & VOLUME: Fastest model for iterating through database candidates
+  SCANNER: 'gemini-2.5-flash-lite-preview' 
+};
+
+// Fallback pipeline (Strictly Flash models only)
+const FALLBACK_PIPELINE = [
   'gemini-3-flash-preview',
   'gemini-2.5-flash-preview',
-  'gemini-2.5-flash-lite-preview',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite-preview-02-05',
-  'gemini-2.0-flash-exp',
-  // Fallbacks
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-pro-exp-02-05' 
+  'gemini-2.5-flash-lite-preview'
 ];
 
 const CACHE_PREFIX = 'retriva_ai_cache_';
@@ -35,7 +42,6 @@ const CacheManager = {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     } catch (e) {
-      // Fallback for non-secure contexts (though unlikely in modern React apps)
       return 'fallback_' + JSON.stringify(data).length + '_' + Date.now();
     }
   },
@@ -90,7 +96,6 @@ const CacheManager = {
     }
 
     if (forceFreeSpace && entries.length > 0) {
-      // Sort by expiry (soonest to expire first) and remove oldest 30%
       entries.sort((a, b) => a.expiry - b.expiry);
       const toRemove = Math.ceil(entries.length * 0.3);
       entries.slice(0, toRemove).forEach(e => localStorage.removeItem(e.key));
@@ -118,19 +123,15 @@ const cleanJSON = (text: string): string => {
   if (!text) return "{}";
   let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
   
-  // Try to parse directly first to avoid destroying valid JSON that doesn't look standard
   try {
       JSON.parse(cleaned);
       return cleaned;
   } catch (e) {
-      // Find outermost structure
       const firstBrace = cleaned.indexOf('{');
       const firstBracket = cleaned.indexOf('[');
-      
       let startIdx = -1;
       let endIdx = -1;
       
-      // Determine if object or array comes first
       if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
            startIdx = firstBrace;
            endIdx = cleaned.lastIndexOf('}');
@@ -142,7 +143,6 @@ const cleanJSON = (text: string): string => {
       if (startIdx !== -1 && endIdx !== -1) {
           return cleaned.substring(startIdx, endIdx + 1);
       }
-      
       return "{}";
   }
 };
@@ -158,20 +158,16 @@ const parseDateVal = (dateStr: string): number => {
 };
 
 // --- HELPER: LOCAL FUZZY MATCH (FALLBACK) ---
-// Enhanced Stop Words to include colors and generic adjectives to prevent false positives on "Black" or "New"
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'but', 'is', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 
   'lost', 'found', 'item', 'missing', 'looking', 'please', 'help', 'left', 'near', 'i', 'my',
-  // Colors (Critical to prevent "Black Mouse" matching "Black Calculator")
   'black', 'white', 'blue', 'red', 'green', 'yellow', 'purple', 'pink', 'orange', 'brown', 'grey', 'gray', 'silver', 'gold',
-  // Generics
   'brand', 'new', 'old', 'good', 'condition', 'broken', 'used', 'small', 'large', 'big'
 ]);
 
 const performLocalFallbackMatch = (queryTitle: string, queryDescription: string, queryCategory: ItemCategory, candidateList: any[]): { id: string }[] => {
     console.log("[RETRIVA_AI] 🛠️ Executing Strict Local Fallback Match...");
     
-    // Normalize text: lowercase, remove punctuation, remove stop words
     const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
     
     const queryTokens = new Set(normalize(queryTitle + " " + queryDescription));
@@ -180,16 +176,12 @@ const performLocalFallbackMatch = (queryTitle: string, queryDescription: string,
     const matches: { id: string }[] = [];
 
     for (const c of candidateList) {
-        // 1. HARD CATEGORY CHECK
-        // If query category is known (not OTHER), reject any candidate with a different category (unless candidate is OTHER)
-        // This prevents "Blue Bottle" matching "Blue Wallet".
         if (queryCategory !== ItemCategory.OTHER && c.cat !== ItemCategory.OTHER && queryCategory !== c.cat) {
             continue;
         }
 
         const cTitleTokens = normalize(c.title);
         const cDescTokens = normalize(c.desc);
-        // Exclude category name from tokens to prevent matching on the word "Electronics" etc.
         const cAllTokens = [...cTitleTokens, ...cDescTokens]; 
         
         let titleMatchCount = 0;
@@ -202,16 +194,11 @@ const performLocalFallbackMatch = (queryTitle: string, queryDescription: string,
             if (queryTokens.has(token)) totalMatchCount++;
         }
 
-        // SCORING (STRICTER)
-        // Requires at least 2 significant title matches (e.g. "Sony" + "Headphones")
-        // OR a very strong description overlap (> 3 tokens) if titles don't match well.
-        // This prevents "Black" (1 token) from triggering a match.
         if (titleMatchCount >= 2 || (titleMatchCount >= 1 && totalMatchCount >= 4)) {
             matches.push({ id: c.id });
         }
     }
     
-    console.log(`[RETRIVA_AI] 🛠️ Local Fallback found ${matches.length} matches.`);
     return matches;
 };
 
@@ -227,39 +214,40 @@ class ModelManager {
 
   public markModelBusy(model: string) {
     const cooldownDuration = 60000;
-    console.warn(`❄️ [RETRIVA_AI] Cooling down ${model} for ${cooldownDuration/1000}s due to Rate Limiting.`);
+    console.warn(`❄️ [RETRIVA_AI] Cooling down ${model} for ${cooldownDuration/1000}s.`);
     this.temporaryCooldowns.set(model, Date.now() + cooldownDuration);
   }
 
-  public getAvailableModels(): string[] {
-    const now = Date.now();
-    let candidates = MODEL_PIPELINE.filter(model => !this.sessionBans.has(model));
-    const ready = candidates.filter(model => {
-        const expiry = this.temporaryCooldowns.get(model);
-        return !expiry || now > expiry;
-    });
-    if (ready.length === 0 && candidates.length > 0) {
-        return candidates;
-    }
-    return ready;
+  public isAvailable(model: string): boolean {
+    if (this.sessionBans.has(model)) return false;
+    const expiry = this.temporaryCooldowns.get(model);
+    if (expiry && Date.now() < expiry) return false;
+    return true;
   }
 }
 
 const modelManager = new ModelManager();
-
-// --- HELPER: DELAY ---
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- CORE GENERATION FUNCTION ---
-const generateWithGauntlet = async (params: any, systemInstruction?: string): Promise<string> => {
+const generateWithGauntlet = async (params: any, systemInstruction?: string, preferredModel?: string): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("MISSING_API_KEY");
 
   const ai = new GoogleGenAI({ apiKey });
-  const pipeline = modelManager.getAvailableModels();
+  
+  // Construct pipeline: Preferred Model First -> Then Fallbacks
+  let pipeline: string[] = [];
+  if (preferredModel && modelManager.isAvailable(preferredModel)) {
+      pipeline.push(preferredModel);
+  }
+  // Add rest of fallbacks, excluding the one we just added
+  pipeline = [...pipeline, ...FALLBACK_PIPELINE.filter(m => m !== preferredModel && modelManager.isAvailable(m))];
   
   if (pipeline.length === 0) {
-     throw new Error("No available models. Please check your API Key permissions.");
+     // If all are banned/busy, force try the preferred one anyway as last resort
+     if (preferredModel) pipeline.push(preferredModel);
+     else throw new Error("No available models.");
   }
 
   let lastError: any = null;
@@ -271,13 +259,13 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
     while (retries <= MAX_RETRIES) {
         try {
             const config = { ...params.config };
-            delete config.thinkingConfig;
+            delete config.thinkingConfig; // Flash models don't support thinkingConfig usually, safekeeping
             
             if (systemInstruction) {
                 config.systemInstruction = systemInstruction;
             }
 
-            console.log(`[RETRIVA_AI] 🚀 Attempting with model: ${model}`);
+            console.log(`[RETRIVA_AI] 🚀 Task assigned to: ${model}`);
             const response = await ai.models.generateContent({
                 ...params,
                 model,
@@ -294,7 +282,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
 
             if (status === 404 || msg.includes('not found') || status === 400) {
                 modelManager.banModel(model, `Status ${status}: ${msg}`);
-                break;
+                break; 
             }
 
             if (status === 429 || status === 503 || msg.includes('quota') || msg.includes('overloaded')) {
@@ -324,52 +312,35 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
 // --- EXPORTED FEATURES (API) ---
 
 export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<ItemReport[]> => {
-    // NOTE: Using console.group instead of collapsed to ensure users see the logs!
-    console.group(`[RETRIVA_AI] 🧠 Analyzing: "${sourceItem.title}" (${sourceItem.type})`);
-    console.log(`Source Info: ID=${sourceItem.id}, Date=${sourceItem.date}, Cat=${sourceItem.category}`);
+    console.group(`[RETRIVA_AI] 🧠 Analyzing: "${sourceItem.title}"`);
     
-    // 1. Initial Filter (Logic Funnel)
-    const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST'; // Polarity
+    // 1. Initial Filter
+    const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST';
     
-    // Status and Polarity
-    // SELF-MATCHING is allowed for testing
     let candidates = allReports.filter(r => 
         r.status === 'OPEN' && 
         r.type === targetType &&
         r.id !== sourceItem.id
     );
 
-    console.log(`Step 1: Found ${candidates.length} candidates with Type '${targetType}' and Status 'OPEN'.`);
+    console.log(`Step 1: Found ${candidates.length} candidates.`);
     
     if (candidates.length === 0) {
-        console.warn("Match Aborted: No candidates of opposite type found in database.");
         console.groupEnd();
         return [];
     }
 
-    // Date Logic
+    // Date Buffer
     const sourceTime = parseDateVal(sourceItem.date);
-    const dateFiltered = candidates.filter(r => {
-        const rTime = parseDateVal(r.date);
-        
-        // BUFFER LOGIC: Allow a 48-hour buffer for date mismatches (increased from 24h)
-        const BUFFER_MS = 86400000 * 2;
+    const BUFFER_MS = 86400000 * 2; // 48 Hours
 
-        if (sourceItem.type === 'LOST') {
-            // Found time must be >= Lost time (physically), but allow buffer
-            return rTime >= (sourceTime - BUFFER_MS);
-        } else {
-            // Lost time must be <= Found time (physically), but allow buffer
-            return (sourceTime + BUFFER_MS) >= rTime;
-        }
+    candidates = candidates.filter(r => {
+        const rTime = parseDateVal(r.date);
+        if (sourceItem.type === 'LOST') return rTime >= (sourceTime - BUFFER_MS);
+        else return (sourceTime + BUFFER_MS) >= rTime;
     });
 
-    const droppedCount = candidates.length - dateFiltered.length;
-    console.log(`Step 2: Date filter kept ${dateFiltered.length} items (Dropped ${droppedCount}).`);
-
-    candidates = dateFiltered;
-
-    // Sort by proximity to sourceTime (Closest dates first)
+    // Sort by proximity
     candidates.sort((a, b) => {
         const aTime = parseDateVal(a.date);
         const bTime = parseDateVal(b.date);
@@ -377,7 +348,6 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
     });
 
     if (candidates.length === 0) {
-        console.log("No candidates remain after date filtering.");
         console.groupEnd();
         return [];
     }
@@ -387,7 +357,7 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
         const queryDescription = `Description: ${sourceItem.description}. Visuals: ${sourceItem.tags.join(', ')}`;
         console.log("Step 3: Sending candidates to Gemini for semantic analysis...");
         
-        // Use the existing findPotentialMatches function which calls Gemini
+        // --- STRATEGY: Use SCANNER Model (Lite) ---
         const matchIds = await findPotentialMatches(
             { title: sourceItem.title, description: queryDescription, imageUrls: sourceItem.imageUrls, category: sourceItem.category },
             candidates
@@ -397,21 +367,15 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
         const validIds = new Set(matchIds.map(m => m.id));
         const finalMatches = candidates.filter(c => validIds.has(c.id));
         
-        console.log("FINAL MATCHES:", finalMatches.map(m => `${m.title} (${m.id})`));
         console.groupEnd();
         return finalMatches;
     } catch (e) {
         console.error("AI Match Failed:", e);
-        // Fallback: Local Keyword Match if API fails totally
         const queryDesc = `${sourceItem.description} ${sourceItem.tags.join(' ')}`;
         const candidateList = candidates.map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
-        
         const fallbackIds = performLocalFallbackMatch(sourceItem.title, queryDesc, sourceItem.category, candidateList);
-        
-        const fallbackMatches = candidates.filter(c => fallbackIds.some(f => f.id === c.id));
-        console.log(`System Fallback: Returning ${fallbackMatches.length} matches based on keywords.`);
         console.groupEnd();
-        return fallbackMatches;
+        return candidates.filter(c => fallbackIds.some(f => f.id === c.id));
     }
 };
 
@@ -427,32 +391,23 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
+    // --- STRATEGY: Use VISION Model (2.5 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
           { text: `SYSTEM: Security Scan. Analyze image for lost & found safety.
-            
             STRICT POLICIES:
-            1. REJECT 'GORE': Bloody, violent, or disturbing content.
+            1. REJECT 'GORE': Bloody, violent content.
             2. REJECT 'NUDITY': Explicit content.
-            3. REJECT 'HUMAN': Selfies, portraits, or photos where a person is the main subject.
-               - If the image contains a person's face/body (selfie, portrait, group photo) -> REJECT.
-               - EXCEPTION: If the image is a DOCUMENT (ID Card, Passport, License) containing a face -> ALLOW (NONE). (We will redact it later).
-               - EXCEPTION: If the image contains hands holding an item -> ALLOW (NONE).
-            
-            Return JSON:
-            {
-              "violationType": "GORE" | "NUDITY" | "HUMAN" | "NONE",
-              "isPrank": boolean,
-              "reason": "User-friendly rejection message or 'Safe'"
-            }
-            ` 
+            3. REJECT 'HUMAN': Selfies or portraits where person is main subject. 
+               - ID Cards/Hands holding items = ALLOW.
+            Return JSON: { "violationType": "GORE"|"NUDITY"|"HUMAN"|"NONE", "isPrank": boolean, "reason": "string" }` 
           },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
       },
       config: { responseMimeType: "application/json" }
-    });
+    }, undefined, MODEL_ROLES.VISION); // <-- Explicitly requesting Vision Model
 
     const parsed = JSON.parse(cleanJSON(text));
     const result = {
@@ -465,7 +420,6 @@ export const instantImageCheck = async (base64Image: string): Promise<{
     CacheManager.set(cacheKey, result);
     return result as any;
   } catch (e) {
-    console.error("Image Check Failed", e);
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
 };
@@ -477,6 +431,7 @@ export const detectRedactionRegions = async (base64Image: string): Promise<numbe
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
+    // --- STRATEGY: Use VISION Model (2.5 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
@@ -485,7 +440,7 @@ export const detectRedactionRegions = async (base64Image: string): Promise<numbe
         ]
       },
       config: { responseMimeType: "application/json" }
-    });
+    }, undefined, MODEL_ROLES.VISION);
 
     const data = JSON.parse(cleanJSON(text));
     const regions = data.regions || [];
@@ -511,6 +466,7 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
+    // --- STRATEGY: Use REASONING Model (3.0 Flash) for better descriptions ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
@@ -519,7 +475,7 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
         ]
       },
       config: { responseMimeType: "application/json" }
-    });
+    }, undefined, MODEL_ROLES.REASONING);
     
     const parsed = JSON.parse(cleanJSON(text));
     const result = {
@@ -547,11 +503,12 @@ export const mergeDescriptions = async (userContext: string, visualData: any): P
   if (cached) return cached as any;
 
   try {
+    // --- STRATEGY: Use REASONING Model (3.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [{ text: `Merge visual data (${JSON.stringify(visualData)}) with user context ("${userContext}") into a concise Lost & Found item description.` }]
       }
-    }, "You are a helpful copywriter.");
+    }, "You are a helpful copywriter.", MODEL_ROLES.REASONING);
     
     const result = text || userContext;
     CacheManager.set(cacheKey, result);
@@ -578,10 +535,11 @@ export const analyzeItemDescription = async (
       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     });
 
+    // --- STRATEGY: Use REASONING Model (3.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: { parts },
       config: { responseMimeType: "application/json" }
-    }, "You are a content moderator and classifier.");
+    }, "You are a content moderator and classifier.", MODEL_ROLES.REASONING);
 
     const resultRaw = JSON.parse(cleanJSON(text));
     const result = {
@@ -614,9 +572,10 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
   if (cached) return cached as any;
 
   try {
+    // --- STRATEGY: Use SCANNER Model (Lite is smart enough for search intent) ---
     const text = await generateWithGauntlet({
       contents: { parts: [{ text: `Analyze query: "${query}". Return JSON: userStatus (LOST/FOUND/NONE), refinedQuery (keywords).` }] }
-    }, "You are a search intent analyzer.");
+    }, "You are a search intent analyzer.", MODEL_ROLES.SCANNER);
     const result = JSON.parse(cleanJSON(text));
     CacheManager.set(cacheKey, result);
     return result;
@@ -650,30 +609,16 @@ export const findPotentialMatches = async (
     console.log(`[RETRIVA_AI] Sending ${candidateList.length} candidates to model:`, candidateList);
     
     const parts: any[] = [{ text: `
-      Role: You are a "Lost and Found" semantic matching engine. 
-      Goal: Find candidates that represent the SAME PHYSICAL OBJECT as the Query Item.
-      
-      QUERY ITEM:
-      - Title: "${query.title}"
-      - Category: "${query.category}"
-      - Description: "${query.description}"
-      
-      CANDIDATES LIST: ${JSON.stringify(candidateList)}
+      Role: Semantic Matching Engine. 
+      Goal: Find candidates that represent the SAME PHYSICAL OBJECT.
+      QUERY: "${query.title}" (${query.category}) - ${query.description}
+      CANDIDATES: ${JSON.stringify(candidateList)}
       
       INSTRUCTIONS:
-      1. STRICT OBJECT TYPE CHECK: 
-         - A "Mouse" is NOT a "Calculator". 
-         - A "Phone" is NOT a "Case".
-         - A "Bottle" is NOT a "Wallet".
-         - If the base object type is different, DO NOT MATCH, even if they share attributes like "Black", "Electronics", or "Plastic".
-      2. IGNORE SHARED GENERIC ATTRIBUTES: The fact that both items are "Black" or "New" is irrelevant if they are different objects.
-      3. CATEGORY CONSISTENCY: If Query is "Electronics" and Candidate is "Electronics", you MUST still verify the object type.
-      4. BRAND NAMES: "Sony Headphones" vs "Sony Camera" -> NO MATCH.
-      5. VAGUE QUERIES: If query is "Black Item" (vague), then you can be more lenient. But if query is specific ("Mouse"), be strict.
+      1. STRICT OBJECT TYPE CHECK: "Mouse" != "Calculator".
+      2. IGNORE GENERIC ATTRIBUTES if object type differs.
       
-      OUTPUT FORMAT:
-      Return strictly JSON: { "matches": [{ "id": "candidate_id_here" }, ...] }
-      Return empty matches [] if no candidate is the same object type.
+      OUTPUT: JSON { "matches": [{ "id": "..." }] }
     ` }];
     
     if (query.imageUrls[0]) {
@@ -681,19 +626,18 @@ export const findPotentialMatches = async (
        if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     }
 
+    // --- STRATEGY: Use SCANNER Model (Lite) for high throughput / low latency ---
     const text = await generateWithGauntlet({
       contents: { parts },
       config: { responseMimeType: "application/json" }
-    }, "You are a semantic matching engine.");
+    }, "Semantic matcher.", MODEL_ROLES.SCANNER);
 
     console.log(`[RETRIVA_AI] Raw Gemini Response: ${text.substring(0, 150)}...`);
 
     const data = JSON.parse(cleanJSON(text));
     let result = Array.isArray(data) ? data : (data.matches || []);
     
-    // IF GEMINI RETURNS EMPTY, FORCE LOCAL FALLBACK
     if (result.length === 0) {
-        console.warn("[RETRIVA_AI] Gemini found 0 matches. FORCE running local fallback...");
         result = performLocalFallbackMatch(query.title, query.description, query.category, candidateList);
     }
     
@@ -701,21 +645,18 @@ export const findPotentialMatches = async (
     return result;
   } catch (e) {
     console.error("[RETRIVA_AI] Match error", e);
-    // FALLBACK ON ERROR
     const candidateList = candidates.slice(0, 30).map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
     return performLocalFallbackMatch(query.title, query.description, query.category, candidateList);
   }
 };
 
 export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
-  // Use content-based cache key logic to ensure if item details change, we re-evaluate.
-  // We sort by ID to ensure A vs B is the same cache key as B vs A.
   const isAGreater = itemA.id > itemB.id;
   const first = isAGreater ? itemA : itemB;
   const second = isAGreater ? itemB : itemA;
 
   const cacheKey = await CacheManager.generateKey({ 
-    type: 'compare_v3', // Bump version to force invalidate old bad prompts
+    type: 'compare_v3', 
     id1: first.id, desc1: first.description, title1: first.title,
     id2: second.id, desc2: second.description, title2: second.title
   });
@@ -725,44 +666,10 @@ export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promis
 
   try {
     const prompt = `
-      Act as a forensic matching expert. Compare these two items to determine if they are the SAME physical object.
-      
-      ITEM A (${itemA.type}):
-      - Title: ${itemA.title}
-      - Category: ${itemA.category}
-      - Description: ${itemA.description}
-      - Location: ${itemA.location}
-      - Date: ${itemA.date}
-      - Features: ${itemA.distinguishingFeatures?.join(', ') || itemA.tags.join(', ')}
-
-      ITEM B (${itemB.type}):
-      - Title: ${itemB.title}
-      - Category: ${itemB.category}
-      - Description: ${itemB.description}
-      - Location: ${itemB.location}
-      - Date: ${itemB.date}
-      - Features: ${itemB.distinguishingFeatures?.join(', ') || itemB.tags.join(', ')}
-
-      CRITICAL RULES:
-      1. ASYMMETRIC DETAIL: If one item description is detailed (e.g. mentions scratches, specific stickers) and the other is generic (omits scratches), this is NOT a mismatch. It is an "Information Gap". Assume the generic reporter simply didn't notice or mention the detail.
-      2. SPECIFIC VS GENERIC: "OnePlus 13" matches "OnePlus Smartphone". "AirPods Pro 2" matches "Apple Earbuds". Treat specific model vs generic brand as a MATCH.
-      3. TIME & LOCATION: If location is same/nearby and time is within reasonable proximity, increase confidence significantly.
-
-      Task: Analyze visual similarities (from provided images) and semantic details.
-      
-      Output JSON:
-      {
-        "confidence": number (0-100), 
-        "explanation": "string",
-        "similarities": ["string"],
-        "differences": ["string"]
-      }
-
-      Scoring Guide:
-      - 90-100: Strong Match. Locations align, brands match. One might be more detailed than the other, but no direct contradictions.
-      - 70-89: Probable Match. Same type, color, and location. Minor variations in naming (e.g. Headphones vs Headset).
-      - 40-69: Possible. Same category, but vague.
-      - 0-39: Mismatch. Different colors, brands, or distinctly different locations/dates.
+      Compare items to determine if they are the SAME physical object.
+      ITEM A: ${itemA.title} - ${itemA.description}
+      ITEM B: ${itemB.title} - ${itemB.description}
+      Output JSON: { "confidence": number(0-100), "explanation": string, "similarities": [], "differences": [] }
     `;
 
     const parts: any[] = [{ text: prompt }];
@@ -773,10 +680,11 @@ export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promis
       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     });
 
+    // --- STRATEGY: Use REASONING Model (3.0 Flash) for high logic comparison ---
     const text = await generateWithGauntlet({
        contents: { parts },
        config: { responseMimeType: "application/json" }
-    }, "You are a forensic analyst.");
+    }, "Forensic analyst.", MODEL_ROLES.REASONING);
     
     const result = JSON.parse(cleanJSON(text));
     CacheManager.set(cacheKey, result);
