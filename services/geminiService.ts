@@ -262,10 +262,6 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
     if (candidates.length === 0) return [];
 
-    // REMOVED: Category filter to allow broader matching
-    // candidates = candidates.filter(r => r.category === sourceItem.category);
-    // if (candidates.length === 0) return [];
-
     // Date
     const sourceTime = parseDateVal(sourceItem.date);
     candidates = candidates.filter(r => {
@@ -279,8 +275,6 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
     console.log(`🔍 Smart Match: Sending ${candidates.length} candidates to AI...`);
 
     // 2. AI Semantic Search (Wrapped in Logic)
-    // We don't cache findSmartMatches directly because 'allReports' changes frequently.
-    // Instead we rely on 'findPotentialMatches' caching which is based on the specific candidate set.
     
     const queryDesc = `Title: ${sourceItem.title}. Desc: ${sourceItem.description}. Loc: ${sourceItem.location}.`;
     
@@ -548,16 +542,59 @@ export const findPotentialMatches = async (
 };
 
 export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
-  // Use IDs for cache key. We assume items don't mutate significantly for comparison purposes.
-  // Sorting IDs ensures A vs B is same as B vs A cache hit.
-  const ids = [itemA.id, itemB.id].sort().join('_');
-  const cacheKey = await CacheManager.generateKey({ type: 'compare', ids });
+  // Use content-based cache key logic to ensure if item details change, we re-evaluate.
+  // We sort by ID to ensure A vs B is the same cache key as B vs A.
+  const isAGreater = itemA.id > itemB.id;
+  const first = isAGreater ? itemA : itemB;
+  const second = isAGreater ? itemB : itemA;
+
+  const cacheKey = await CacheManager.generateKey({ 
+    type: 'compare_v2', 
+    id1: first.id, desc1: first.description, title1: first.title,
+    id2: second.id, desc2: second.description, title2: second.title
+  });
   
   const cached = CacheManager.get(cacheKey);
   if (cached) return cached as any;
 
   try {
-    const parts: any[] = [{ text: `Compare Item A (${itemA.title}) vs Item B (${itemB.title}). Return JSON: confidence (0-100), explanation, similarities (array), differences (array).` }];
+    const prompt = `
+      Act as a forensic matching expert. Compare these two items to determine if they are the SAME physical object.
+      
+      ITEM A (${itemA.type}):
+      - Title: ${itemA.title}
+      - Category: ${itemA.category}
+      - Description: ${itemA.description}
+      - Location: ${itemA.location}
+      - Date: ${itemA.date}
+      - Features: ${itemA.distinguishingFeatures?.join(', ') || itemA.tags.join(', ')}
+
+      ITEM B (${itemB.type}):
+      - Title: ${itemB.title}
+      - Category: ${itemB.category}
+      - Description: ${itemB.description}
+      - Location: ${itemB.location}
+      - Date: ${itemB.date}
+      - Features: ${itemB.distinguishingFeatures?.join(', ') || itemB.tags.join(', ')}
+
+      Task: Analyze visual similarities (from provided images) and semantic details.
+      
+      Output JSON:
+      {
+        "confidence": number (0-100), 
+        "explanation": "string",
+        "similarities": ["string"],
+        "differences": ["string"]
+      }
+
+      Scoring Guide:
+      - 90-100: Exact Match (Same unique scratch, sticker, or extremely specific description).
+      - 70-89: High Probability (Same make, model, color, time, and location).
+      - 40-69: Possible Match (Same category and color, but generic).
+      - 0-39: Unlikely (Different type, color, or conflicting details).
+    `;
+
+    const parts: any[] = [{ text: prompt }];
     
     const images = [itemA.imageUrls[0], itemB.imageUrls[0]].filter(Boolean);
     images.forEach(img => {
