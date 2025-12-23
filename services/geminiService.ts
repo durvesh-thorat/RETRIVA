@@ -12,14 +12,12 @@ export interface ComparisonResult {
 // --- CONFIGURATION: THE MODERN PIPELINE ---
 // Updated to use specific stable identifiers for Gemini 3.0 and 2.5 series.
 const MODEL_PIPELINE = [
-  'gemini-3-flash-preview',           // Primary: Top-tier visual reasoning & OCR
-  'gemini-3-flash-thinking-preview',  // Reasoning: For complex matching (e.g., "Is this my scratched watch?")
-  'gemini-2.5-flash',                 // Stable 2.5: High context for matching against large DBs
-  'gemini-2.5-flash-image',           // Specialized: Nano Banana for conversational visual checks
-  'gemini-2.0-flash',                 // Stable GA: Fast standard processing
-  'gemini-2.0-flash-lite'             // Ultra-Low Cost: High-frequency tagging
+  'gemini-3-flash-preview',   // Primary: Frontier-level visual reasoning
+  'gemini-2.5-flash',         // Stable 2.5: 1M token context window
+  'gemini-2.5-flash-image',   // Specialized: Image editing/reasoning
+  'gemini-2.0-flash',         // Stable GA: Standard production model
+  'gemini-2.0-flash-lite'     // Lite: High-frequency, low-cost
 ];
-
 
 // --- HELPER: API KEY ---
 const getApiKey = (): string | undefined => {
