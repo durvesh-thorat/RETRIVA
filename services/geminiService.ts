@@ -251,8 +251,9 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
 
 export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<ItemReport[]> => {
     // 1. Initial Filter (Logic Funnel)
-    const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST';
+    const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST'; // Polarity
     
+    // Status and Polarity (and self-check)
     let candidates = allReports.filter(r => 
         r.status === 'OPEN' && 
         r.type === targetType && 
@@ -261,14 +262,16 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
     if (candidates.length === 0) return [];
 
-    // Category
-    candidates = candidates.filter(r => r.category === sourceItem.category);
-    if (candidates.length === 0) return [];
+    // REMOVED: Category filter to allow broader matching
+    // candidates = candidates.filter(r => r.category === sourceItem.category);
+    // if (candidates.length === 0) return [];
 
     // Date
     const sourceTime = parseDateVal(sourceItem.date);
     candidates = candidates.filter(r => {
         const rTime = parseDateVal(r.date);
+        // If I lost something on day X, I can only find it on day X or later.
+        // If I found something on day Y, it must have been lost on day Y or earlier.
         return sourceItem.type === 'LOST' ? rTime >= sourceTime : sourceTime >= rTime;
     });
     if (candidates.length === 0) return [];
