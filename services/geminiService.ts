@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { ItemCategory, GeminiAnalysisResult, ItemReport, ReportType } from "../types";
 
@@ -17,55 +18,18 @@ export interface MatchCandidate {
 
 // --- CONFIGURATION ---
 
-// The Cascade: Priority order for models
-// 1. Standard Flash 2.0 (Best Balance)
-// 2. Flash Lite 2.0 (Fast/Backup)
-// 3. Flash 1.5 (Legacy/Stable Fallback)
+// PRIORITY CASCADE:
+// 1. Gemini 3.0 Flash: Best reasoning, newest model.
+// 2. Gemini 2.0 Flash: Reliable fallback.
+// 3. Gemini 2.0 Flash Lite: High speed, lower cost, good for retries.
 const MODEL_CASCADE = [
+  'gemini-3-flash-preview',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite-preview-02-05',
-  'gemini-1.5-flash'
+  'gemini-2.0-flash-lite-preview-02-05'
 ];
 
-const CACHE_PREFIX = 'retriva_ai_v5_'; 
-const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 Hours
-
-// --- CACHE MANAGER ---
-const CacheManager = {
-  async generateKey(data: any): Promise<string> {
-    try {
-      const msgBuffer = new TextEncoder().encode(JSON.stringify(data));
-      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch (e) {
-      return 'fallback_' + JSON.stringify(data).length + '_' + Date.now();
-    }
-  },
-
-  get<T>(key: string): T | null {
-    try {
-      const itemStr = localStorage.getItem(CACHE_PREFIX + key);
-      if (!itemStr) return null;
-      
-      const item = JSON.parse(itemStr);
-      if (Date.now() > item.expiry) {
-        localStorage.removeItem(CACHE_PREFIX + key);
-        return null;
-      }
-      return item.value;
-    } catch (e) {
-      return null;
-    }
-  },
-
-  set(key: string, value: any) {
-    try {
-      const item = { value, expiry: Date.now() + CACHE_EXPIRY };
-      localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(item));
-    } catch (e) { /* Ignore cache errors */ }
-  }
-};
+const MAX_RETRIES = 3;
+const BASE_DELAY = 2000; // 2 seconds
 
 // --- HELPER: API KEY ---
 const getApiKey = (): string | undefined => {
@@ -77,252 +41,190 @@ const getApiKey = (): string | undefined => {
   return key;
 };
 
-// --- HELPER: JSON CLEANER ---
+// --- HELPER: ROBUST JSON PARSER ---
 const cleanJSON = (text: string): string => {
   if (!text) return "{}";
+  // Remove Markdown code blocks
   let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
-  try {
-      JSON.parse(cleaned);
-      return cleaned;
-  } catch (e) {
-      const firstBrace = cleaned.indexOf('{');
-      const firstBracket = cleaned.indexOf('[');
-      let start = -1;
-      let end = -1;
+  
+  // Attempt to find the first valid JSON object or array
+  const firstBrace = cleaned.indexOf('{');
+  const firstBracket = cleaned.indexOf('[');
+  
+  let start = -1;
+  let end = -1;
 
-      if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-          start = firstBrace;
-          end = cleaned.lastIndexOf('}');
-      } else if (firstBracket !== -1) {
-          start = firstBracket;
-          end = cleaned.lastIndexOf(']');
-      }
-
-      if (start !== -1 && end !== -1) {
-          return cleaned.substring(start, end + 1);
-      }
-      return "{}";
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      start = firstBrace;
+      end = cleaned.lastIndexOf('}');
+  } else if (firstBracket !== -1) {
+      start = firstBracket;
+      end = cleaned.lastIndexOf(']');
   }
+
+  if (start !== -1 && end !== -1) {
+      cleaned = cleaned.substring(start, end + 1);
+  }
+
+  return cleaned;
 };
 
-// --- HELPER: DATE PARSER ---
-const parseDateVal = (dateStr: string): number => {
-    if (!dateStr) return 0;
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
-    }
-    return new Date(dateStr).getTime();
-};
+// --- HELPER: SLEEP ---
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// --- LOCAL LOGIC FALLBACKS ---
-
-const localKeywordMatch = (query: string, text: string): number => {
-    const qWords = query.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 2);
-    const tWords = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
-    let matches = 0;
-    qWords.forEach(q => {
-        if (tWords.some(t => t.includes(q))) matches++;
-    });
-    return matches;
-};
-
-const performLocalFallbackMatch = (queryTitle: string, queryDescription: string, queryCategory: ItemCategory, candidateList: any[]): MatchCandidate[] => {
-    console.log("[RETRIVA_AI] 🛡️ Active Cascade: Switching to Local Logic...");
-    const matches: MatchCandidate[] = [];
-
-    for (const c of candidateList) {
-        // Strict Category Check for local logic
-        if (queryCategory !== ItemCategory.OTHER && c.cat !== ItemCategory.OTHER && queryCategory !== c.cat) continue;
-
-        let score = 0;
-        // Title match (High weight)
-        const titleHits = localKeywordMatch(queryTitle, c.title);
-        if (titleHits > 0) score += 40;
-        
-        // Desc match (Medium weight)
-        const descHits = localKeywordMatch(queryTitle + " " + queryDescription, c.desc);
-        if (descHits > 0) score += 20;
-
-        // Tags match (Accumulative)
-        const sharedTags = c.tags.filter((t: string) => (queryTitle + queryDescription).toLowerCase().includes(t.toLowerCase()));
-        score += sharedTags.length * 10;
-
-        if (score > 25) {
-            matches.push({ 
-                id: c.id, 
-                confidence: Math.min(score, 75), // Cap local confidence to avoid false certainty
-                reason: "Keyword overlap detected (Local Analysis)" 
-            });
-        }
-    }
-    return matches.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
-};
-
-const performLocalComparison = (itemA: ItemReport, itemB: ItemReport): ComparisonResult => {
-    let confidence = 0;
-    const similarities = [];
-    const differences = [];
-
-    if (itemA.category === itemB.category) {
-        confidence += 30;
-        similarities.push("Same Category");
-    } else {
-        differences.push("Different Category");
-    }
-
-    if (localKeywordMatch(itemA.title, itemB.title) > 0) {
-        confidence += 30;
-        similarities.push("Similar Title Keywords");
-    }
-
-    const timeA = parseDateVal(itemA.date);
-    const timeB = parseDateVal(itemB.date);
-    const dayDiff = Math.abs(timeA - timeB) / (1000 * 60 * 60 * 24);
-    if (dayDiff <= 7) {
-        confidence += 20;
-        similarities.push("Dates are close");
-    }
-
-    return {
-        confidence: Math.min(confidence, 80),
-        explanation: "AI Unavailable. Estimate based on keywords, dates, and categories.",
-        similarities,
-        differences
-    };
-};
-
-// --- THE CASCADE RUNNER ---
-const runCascade = async (params: any, systemInstruction?: string): Promise<string | null> => {
+// --- THE INTELLIGENT CASCADE RUNNER ---
+// Tries models in sequence with exponential backoff for 429s.
+const runIntelligentCascade = async (params: any, systemInstruction?: string): Promise<string | null> => {
   const apiKey = getApiKey();
   if (!apiKey) return null;
 
   const ai = new GoogleGenAI({ apiKey });
   
-  let lastError = null;
+  for (let i = 0; i < MODEL_CASCADE.length; i++) {
+    const model = MODEL_CASCADE[i];
+    
+    // Retry logic for specific model
+    for (let attempt = 0; attempt < 2; attempt++) { 
+        try {
+            // Apply delay if it's a retry or secondary model to let quota cool down
+            if (i > 0 || attempt > 0) {
+                const waitTime = BASE_DELAY * Math.pow(1.5, i + attempt);
+                console.log(`[RETRIVA_AI] ⏳ Waiting ${waitTime}ms before trying ${model} (Attempt ${attempt+1})...`);
+                await delay(waitTime);
+            }
 
-  for (const model of MODEL_CASCADE) {
-    try {
-      // console.log(`[RETRIVA_AI] 🔄 Trying Model: ${model}`);
-      
-      const config = { ...params.config };
-      delete config.thinkingConfig; 
-      
-      if (systemInstruction) {
-          config.systemInstruction = systemInstruction;
-      }
+            const config = { ...params.config };
+            delete config.thinkingConfig; // Safety cleanup
+            
+            if (systemInstruction) {
+                config.systemInstruction = systemInstruction;
+            }
 
-      const response = await ai.models.generateContent({
-          ...params,
-          model,
-          config
-      });
+            const response = await ai.models.generateContent({
+                ...params,
+                model,
+                config
+            });
 
-      if (response.text) {
-          // console.log(`[RETRIVA_AI] ✅ Success with ${model}`);
-          return response.text;
-      }
-    } catch (error: any) {
-      console.warn(`[RETRIVA_AI] ⚠️ Failed ${model}: ${error.message || error.status}`);
-      lastError = error;
-      // Continue to next model in loop
+            if (response.text) {
+                return response.text;
+            }
+        } catch (error: any) {
+            const isQuotaError = error.message?.includes('429') || error.status === 429;
+            const isNotFoundError = error.message?.includes('404') || error.status === 404;
+
+            console.warn(`[RETRIVA_AI] ⚠️ Model ${model} failed (Attempt ${attempt+1}): ${error.message || error.status}`);
+
+            if (isNotFoundError) break; // Don't retry 404s on the same model, switch to next in cascade
+            if (!isQuotaError) break; // Unknown error, move to next model
+            // If 429, loop will retry
+        }
     }
   }
   
-  console.error("[RETRIVA_AI] ❌ All models failed.", lastError);
-  return null; // Trigger local fallback
+  console.error("[RETRIVA_AI] ❌ CRITICAL: All AI models exhausted.");
+  return null; 
 };
 
 
 // --- EXPORTED FEATURES (API) ---
 
-export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<{ report: ItemReport, confidence: number }[]> => {
+export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<{ report: ItemReport, confidence: number, isOffline: boolean }[]> => {
     
     const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST';
-    const BUFFER_MS = 86400000 * 90; // 90 days window
-    const sourceTime = parseDateVal(sourceItem.date);
+    // const BUFFER_MS = 86400000 * 120; // 4 months
+    // const sourceTime = new Date(sourceItem.date).getTime();
 
-    // 1. Initial Filtering
+    // 1. Loose Pre-Filtering (Let AI decide the rest)
+    // We only filter by status and type. We let AI handle category fuzziness (e.g. "Phone" vs "Electronics").
     let candidates = allReports.filter(r => 
         r.status === 'OPEN' && 
         r.type === targetType &&
-        r.id !== sourceItem.id &&
-        Math.abs(parseDateVal(r.date) - sourceTime) <= BUFFER_MS
+        r.id !== sourceItem.id
     );
 
-    // 2. Try AI Matching (Batching to save context window)
-    let matchResults: MatchCandidate[] = [];
-    
-    const aiCandidates = candidates.slice(0, 12).map(c => ({ 
-        id: c.id, 
-        title: c.title, 
-        desc: c.description, 
-        cat: c.category, 
-        tags: c.tags,
-        date: c.date,
-        loc: c.location
-    }));
-
-    if (aiCandidates.length > 0) {
-        try {
-            const queryDescription = `Title: ${sourceItem.title}. Desc: ${sourceItem.description}. Tags: ${sourceItem.tags.join(', ')}. Loc: ${sourceItem.location}`;
-            
-            const parts: any[] = [{ text: `
-              Role: Lost & Found Intelligence.
-              Task: Find matches for the MISSING ITEM in the CANDIDATES list.
-              
-              MISSING ITEM:
-              ${queryDescription} (${sourceItem.category})
-              
-              CANDIDATES:
-              ${JSON.stringify(aiCandidates)}
-              
-              INSTRUCTIONS:
-              1. Analyze semantic similarity (e.g. "AirPods" = "Headphones").
-              2. Analyze location proximity if plausible.
-              3. Ignore minor date differences (Found items are often reported days later).
-              
-              OUTPUT JSON:
-              { "matches": [ { "id": "candidate_id", "confidence": number (0-100) } ] }
-              
-              Return only matches > 40 confidence.
-            ` }];
-            
-            // Optional: Add image context if available
-            if (sourceItem.imageUrls[0]) {
-               const data = sourceItem.imageUrls[0].split(',')[1];
-               if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-            }
-
-            // Run Cascade
-            const text = await runCascade({
-                contents: { parts },
-                config: { responseMimeType: "application/json" }
-            });
-
-            if (text) {
-                const data = JSON.parse(cleanJSON(text));
-                matchResults = data.matches || [];
-            }
-        } catch (e) {
-            // Cascade failed, handled below
-        }
+    // Optimize: If too many candidates, take the most recent 30 to prevent context overflow
+    if (candidates.length > 30) {
+        candidates = candidates.slice(0, 30);
     }
 
-    // 3. Fallback / Augment with Local Logic
-    // If AI failed OR returned very few matches, run local logic to ensure we show something if it exists
-    if (matchResults.length === 0) {
-        const candidateList = candidates.map(c => ({ id: c.id, title: c.title, desc: c.description, cat: c.category, tags: c.tags }));
-        matchResults = performLocalFallbackMatch(sourceItem.title, sourceItem.description, sourceItem.category, candidateList);
+    if (candidates.length === 0) return [];
+
+    // 2. AI Reasoning Engine
+    let matchResults: MatchCandidate[] = [];
+    let usedAI = false;
+    
+    // Minimal Candidate JSON for Token Efficiency
+    const aiCandidates = candidates.map(c => ({ 
+        id: c.id, 
+        t: c.title, 
+        d: c.description, 
+        c: c.category, 
+        l: c.location,
+        tm: `${c.date} ${c.time}`
+    }));
+
+    const sourceData = `ITEM: ${sourceItem.title}. DESC: ${sourceItem.description}. CAT: ${sourceItem.category}. LOC: ${sourceItem.location}. TIME: ${sourceItem.date} ${sourceItem.time}`;
+
+    try {
+        const systemPrompt = `
+          You are a Forensic Recovery Agent. Your goal is to match a ${sourceItem.type} item with a list of potential candidates.
+          
+          RULES:
+          1. **Semantic Matching**: Match meaning, not just words (e.g., "AirPods" == "Earbuds", "MacBook" == "Laptop").
+          2. **Hard Constraints**: Reject if visual attributes contradict (e.g., "Red Case" vs "Blue Case").
+          3. **Soft Constraints**: Allow fuzzy time/location (e.g., "Library" might match "Student Center" if nearby).
+          4. **Confidence**:
+             - 90-100: Almost certain match (Unique ID, very specific visuals).
+             - 70-89: High probability (Strong semantic match, correct location/time).
+             - 40-69: Potential match (Vague description but correct category/context).
+             - 0-39: Ignore.
+
+          INPUT CANDIDATES:
+          ${JSON.stringify(aiCandidates)}
+
+          TARGET ITEM:
+          ${sourceData}
+
+          OUTPUT:
+          Return a JSON object: { "matches": [ { "id": "string", "confidence": number, "reason": "string" } ] }
+          Only include confidence > 40.
+        `;
+
+        const text = await runIntelligentCascade({
+            contents: { parts: [{ text: systemPrompt }] },
+            config: { responseMimeType: "application/json" }
+        });
+
+        if (text) {
+            const data = JSON.parse(cleanJSON(text));
+            matchResults = data.matches || [];
+            usedAI = true;
+        }
+    } catch (e) {
+        console.error("[RETRIVA_AI] Logic Error:", e);
+    }
+
+    // 3. Fallback (Only if AI completely failed)
+    if (!usedAI) {
+        // Simple keyword fallback
+        console.log("Switching to basic keyword fallback");
+        matchResults = candidates
+            .map(c => {
+                let score = 0;
+                if (c.category === sourceItem.category) score += 30;
+                if (c.title.toLowerCase().includes(sourceItem.title.toLowerCase())) score += 40;
+                return { id: c.id, confidence: score, reason: "Keyword Match" };
+            })
+            .filter(m => m.confidence > 30);
     }
 
     // Map back
     const results = matchResults.map(m => {
         const report = candidates.find(c => c.id === m.id);
-        return report ? { report, confidence: m.confidence } : null;
-    }).filter(Boolean) as { report: ItemReport, confidence: number }[];
+        return report ? { report, confidence: m.confidence, isOffline: !usedAI } : null;
+    }).filter(Boolean) as { report: ItemReport, confidence: number, isOffline: boolean }[];
 
-    // Sort by confidence
     return results.sort((a, b) => b.confidence - a.confidence);
 };
 
@@ -334,10 +236,10 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 }> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    const text = await runCascade({
+    const text = await runIntelligentCascade({
       contents: {
         parts: [
-          { text: `Safety Check. Analyze image. Strict Policy: NO GORE, NO NUDITY, NO SELFIES.
+          { text: `Safety Analysis. Analyze image. Strict Policy: NO GORE, NO NUDITY, NO SELFIES.
             Return JSON: { "violationType": "GORE"|"NUDITY"|"HUMAN"|"NONE", "isPrank": boolean, "reason": string }` },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
@@ -355,10 +257,11 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    const text = await runCascade({
+    const text = await runIntelligentCascade({
         contents: {
             parts: [
-                { text: `Identify bounding boxes [ymin, xmin, ymax, xmax] (0-1000 scale) for FACES, ID CARDS, CREDIT CARDS. Return JSON { "regions": [[...]] }` },
+                { text: `Identify bounding boxes [ymin, xmin, ymax, xmax] (scale 0-1000) for: FACES, ID CARDS, CREDIT CARDS, SCREENS WITH PII. 
+                  Return JSON { "regions": [[ymin, xmin, ymax, xmax], ...] }` },
                 { inlineData: { mimeType: "image/jpeg", data: base64Data } }
             ]
         },
@@ -384,10 +287,19 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
 }> => {
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    const text = await runCascade({
+    const text = await runIntelligentCascade({
       contents: {
         parts: [
-          { text: `Analyze image for Lost & Found. Extract JSON: title, category, tags, color, brand, condition, distinguishingFeatures.` },
+          { text: `You are an expert appraiser. Analyze this image for a Lost & Found database.
+            Extract details into JSON:
+            - title: Short descriptive title (e.g. "Black North Face Backpack").
+            - category: Best fit enum (Electronics, Stationery, Clothing, Accessories, ID Cards, Books, Other).
+            - tags: List of visual keywords (e.g. ["zipper", "stickers", "scratch"]).
+            - color: Dominant color.
+            - brand: Brand name if visible (else "Unknown").
+            - condition: "New", "Used", "Damaged".
+            - distinguishingFeatures: List specific unique identifiers (e.g. "Crack on screen", "Batman sticker").` 
+          },
           { inlineData: { mimeType: "image/jpeg", data: base64Data } }
         ]
       },
@@ -396,13 +308,14 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
     
     if (!text) throw new Error("No AI response");
     const parsed = JSON.parse(cleanJSON(text));
+    
     return {
-        title: parsed.title || "",
+        title: parsed.title || "Found Item",
         category: parsed.category || ItemCategory.OTHER,
         tags: parsed.tags || [],
-        color: parsed.color || "",
-        brand: parsed.brand || "",
-        condition: parsed.condition || "",
+        color: parsed.color || "Unknown",
+        brand: parsed.brand || "Unknown",
+        condition: parsed.condition || "Good",
         distinguishingFeatures: parsed.distinguishingFeatures || []
     };
   } catch (e) {
@@ -415,9 +328,16 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
 
 export const mergeDescriptions = async (userDistinguishingFeatures: string, visualData: any): Promise<string> => {
     try {
-        const text = await runCascade({
+        const text = await runIntelligentCascade({
             contents: {
-                parts: [{ text: `Merge these details into a short lost item description (max 300 chars): User Notes: "${userDistinguishingFeatures}", Visuals: ${JSON.stringify(visualData)}` }]
+                parts: [{ text: `
+                  Act as a professional copywriter.
+                  Create a clear, concise description for a Lost/Found item report.
+                  Combine User Notes: "${userDistinguishingFeatures}"
+                  With Visual Data: ${JSON.stringify(visualData)}
+                  
+                  Style: Factual, helpful, easy to read. Max 3 sentences.` 
+                }]
             }
         });
         return text || userDistinguishingFeatures;
@@ -428,9 +348,19 @@ export const mergeDescriptions = async (userDistinguishingFeatures: string, visu
 
 export const validateReportContext = async (reportData: any): Promise<{ isValid: boolean, reason: string }> => {
     try {
-        const text = await runCascade({
+        const text = await runIntelligentCascade({
             contents: {
-                parts: [{ text: `Validate report logic. JSON: { "isValid": boolean, "reason": string }. Data: ${JSON.stringify(reportData)}` }]
+                parts: [{ text: `
+                  Review this Lost & Found report for logical consistency.
+                  Data: ${JSON.stringify(reportData)}
+                  
+                  Check for:
+                  1. Gibberish or spam titles.
+                  2. Contradictions (e.g. Title says "Phone" but Category says "Clothing").
+                  3. Abstract locations (e.g. "The Moon", "Nowhere").
+                  
+                  Output JSON: { "isValid": boolean, "reason": string }` 
+                }]
             },
             config: { responseMimeType: "application/json" }
         });
@@ -447,13 +377,36 @@ export const analyzeItemDescription = async (
   title: string = ""
 ): Promise<GeminiAnalysisResult> => {
     try {
-        const parts: any[] = [{ text: `Analyze item: "${title} - ${description}". JSON output: isViolating (bool), violationType, category, summary, tags.` }];
+        const parts: any[] = [{ text: `
+          Analyze this item report.
+          Title: ${title}
+          Description: ${description}
+          
+          Tasks:
+          1. Detect if this is a PRANK or VIOLATION (Drugs, Weapons, Explicit, Gore).
+          2. Summarize content.
+          3. Extract tags.
+          
+          Output JSON: 
+          {
+            "isViolating": boolean,
+            "violationType": "GORE"|"ANIMAL"|"HUMAN"|"NONE",
+            "violationReason": string,
+            "isPrank": boolean,
+            "category": string,
+            "summary": string,
+            "tags": string[],
+            "distinguishingFeatures": string[]
+          }
+        ` }];
+        
         base64Images.forEach(img => {
             const data = img.split(',')[1] || img;
-            if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+            // Limit image size payload for this check to avoid 413
+            if (data && data.length < 500000) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
         });
 
-        const text = await runCascade({
+        const text = await runIntelligentCascade({
             contents: { parts },
             config: { responseMimeType: "application/json" }
         });
@@ -465,10 +418,10 @@ export const analyzeItemDescription = async (
             isViolating: resultRaw.isViolating || false,
             violationType: resultRaw.violationType || 'NONE',
             violationReason: resultRaw.violationReason || '',
-            isPrank: false,
+            isPrank: resultRaw.isPrank || false,
             category: resultRaw.category || ItemCategory.OTHER,
-            title: resultRaw.title || title,
-            description: resultRaw.description || description,
+            title: title,
+            description: description,
             summary: resultRaw.summary || description.substring(0, 50),
             tags: resultRaw.tags || [],
             distinguishingFeatures: resultRaw.distinguishingFeatures || [],
@@ -476,7 +429,6 @@ export const analyzeItemDescription = async (
         } as any;
 
     } catch (e) {
-        // Fallback result
         return { 
             isViolating: false, isPrank: false, category: ItemCategory.OTHER, 
             title: title || "Item", description, distinguishingFeatures: [], summary: "", tags: [], faceStatus: 'NONE'
@@ -485,56 +437,69 @@ export const analyzeItemDescription = async (
 };
 
 export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LOST' | 'FOUND' | 'NONE'; refinedQuery: string }> => {
-    // Quick heuristic
-    const lower = query.toLowerCase();
-    if (lower.includes('lost')) return { userStatus: 'LOST', refinedQuery: query.replace('lost', '').trim() };
-    if (lower.includes('found')) return { userStatus: 'FOUND', refinedQuery: query.replace('found', '').trim() };
-    
-    // AI Fallback
     try {
-        const text = await runCascade({
-            contents: { parts: [{ text: `Analyze query: "${query}". JSON: userStatus (LOST/FOUND/NONE), refinedQuery.` }] },
+        const text = await runIntelligentCascade({
+            contents: { parts: [{ text: `
+              Analyze user search query: "${query}"
+              Determine intent: Is user looking for something they LOST? Or reporting something FOUND?
+              Extract the core item keywords.
+              
+              Output JSON: { "userStatus": "LOST"|"FOUND"|"NONE", "refinedQuery": string }
+            ` }] },
             config: { responseMimeType: "application/json" }
         });
         if (text) return JSON.parse(cleanJSON(text));
     } catch(e) {}
 
+    // Heuristic Fallback
+    const lower = query.toLowerCase();
+    if (lower.includes('lost')) return { userStatus: 'LOST', refinedQuery: query.replace('lost', '').trim() };
+    if (lower.includes('found')) return { userStatus: 'FOUND', refinedQuery: query.replace('found', '').trim() };
     return { userStatus: 'NONE', refinedQuery: query };
 };
 
 export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promise<ComparisonResult> => {
   try {
     const prompt = `
-      Compare these two items. Are they the same object?
-      Item 1: ${itemA.title}, ${itemA.description}, ${itemA.location}, ${itemA.date}
-      Item 2: ${itemB.title}, ${itemB.description}, ${itemB.location}, ${itemB.date}
+      Deep Semantic Comparison.
+      ITEM A (Source): ${itemA.title}, ${itemA.description}, Loc: ${itemA.location}, Date: ${itemA.date}
+      ITEM B (Candidate): ${itemB.title}, ${itemB.description}, Loc: ${itemB.location}, Date: ${itemB.date}
       
-      JSON Output:
+      Task: Determine if these are the SAME physical object.
+      1. Analyze Visual/Physical Description match.
+      2. Analyze Location/Time plausibility.
+      3. Identify contradictions.
+      
+      Output JSON:
       {
         "confidence": number (0-100),
-        "explanation": "string summary",
-        "similarities": ["string"],
-        "differences": ["string"]
+        "explanation": "concise reasoning",
+        "similarities": ["point 1", "point 2"],
+        "differences": ["point 1", "point 2"]
       }
     `;
 
     const parts: any[] = [{ text: prompt }];
     
-    // Use images if available (First image of each)
     const images = [itemA.imageUrls[0], itemB.imageUrls[0]].filter(Boolean);
     images.forEach(img => {
       const data = img.split(',')[1];
-      if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
+      if (data && data.length < 500000) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     });
 
-    const text = await runCascade({
+    const text = await runIntelligentCascade({
        contents: { parts },
        config: { responseMimeType: "application/json" }
     });
     
-    if (!text) return performLocalComparison(itemA, itemB);
+    if (!text) throw new Error("No comparison result");
     return JSON.parse(cleanJSON(text));
   } catch (e) {
-    return performLocalComparison(itemA, itemB);
+    return {
+        confidence: 0,
+        explanation: "AI Comparison Service currently overloaded. Please review manually.",
+        similarities: [],
+        differences: []
+    };
   }
 };
