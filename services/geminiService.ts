@@ -18,25 +18,26 @@ export interface MatchCandidate {
 // --- CONFIGURATION ---
 
 // 1. Define specific roles for models based on user request
+// NOTE: Switched to 'gemini-2.0-flash' as primary to resolve 404s on 2.5-preview and 429s on lite-preview
 const MODEL_ROLES = {
   // LOGIC & CREATIVE: Best for writing descriptions and complex comparisons
-  REASONING: 'gemini-3-flash-preview', 
+  REASONING: 'gemini-2.0-flash', 
   
   // VISION & SAFETY: Balanced model for safety checks and coordinate detection
-  VISION: 'gemini-2.5-flash-preview', 
+  VISION: 'gemini-2.0-flash', 
   
-  // SPEED & VOLUME: Using Standard Flash for reliability over Lite
-  SCANNER: 'gemini-2.5-flash-preview' 
+  // SPEED & VOLUME: Using Standard Flash for reliability
+  SCANNER: 'gemini-2.0-flash' 
 };
 
 // Fallback pipeline (Strictly Flash models only)
 const FALLBACK_PIPELINE = [
-  'gemini-2.5-flash-preview',
+  'gemini-2.0-flash',
   'gemini-2.0-flash-lite-preview-02-05',
-  'gemini-3-flash-preview'
+  'gemini-1.5-flash' // Safety net: If newer models fail/quota, fallback to stable 1.5
 ];
 
-const CACHE_PREFIX = 'retriva_ai_cache_v2_'; // Incremented version to clear old bad cache
+const CACHE_PREFIX = 'retriva_ai_cache_v3_'; // Incremented version to clear old bad cache
 const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 Hours
 
 // --- CACHE MANAGER ---
@@ -300,7 +301,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string, pre
             if (status === 429 || status === 503 || msg.includes('quota') || msg.includes('overloaded')) {
                 retries++;
                 if (retries <= MAX_RETRIES) {
-                    const waitTime = Math.pow(2, retries) * 1000; 
+                    const waitTime = Math.pow(2, retries) * 2000; // Increased backoff for 429
                     await delay(waitTime);
                     continue;
                 } else {
@@ -371,7 +372,7 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
     try {
         const queryDescription = `Title: ${sourceItem.title}. Desc: ${sourceItem.description}. Visual Tags: ${sourceItem.tags.join(', ')}`;
         
-        // --- STRATEGY: Use STANDARD Flash Model (2.5) ---
+        // --- STRATEGY: Use STANDARD Flash Model (2.0) ---
         matchResults = await findPotentialMatches(
             { title: sourceItem.title, description: queryDescription, imageUrls: sourceItem.imageUrls, category: sourceItem.category },
             candidates
@@ -406,8 +407,8 @@ export const findPotentialMatches = async (
 ): Promise<MatchCandidate[]> => {
   if (candidates.length === 0) return [];
   
-  // Batching: Limit to 50 candidates per AI call to ensure high quality attention
-  const candidateList = candidates.slice(0, 50).map(c => ({ 
+  // Batching: Reduced to 10 candidates per AI call to avoid 429/Quota Limits
+  const candidateList = candidates.slice(0, 10).map(c => ({ 
         id: c.id, 
         title: c.title, 
         desc: c.description, 
@@ -451,7 +452,7 @@ export const findPotentialMatches = async (
        if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     }
 
-    // --- STRATEGY: Use SCANNER Model (2.5 Flash) ---
+    // --- STRATEGY: Use SCANNER Model (2.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: { parts },
       config: { responseMimeType: "application/json" }
@@ -482,7 +483,7 @@ export const instantImageCheck = async (base64Image: string): Promise<{
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    // --- STRATEGY: Use VISION Model (2.5 Flash) ---
+    // --- STRATEGY: Use VISION Model (2.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
@@ -522,7 +523,7 @@ export const detectRedactionRegions = async (base64Image: string): Promise<numbe
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    // --- STRATEGY: Use VISION Model (2.5 Flash) ---
+    // --- STRATEGY: Use VISION Model (2.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
@@ -557,7 +558,7 @@ export const extractVisualDetails = async (base64Image: string): Promise<{
 
   try {
     const base64Data = base64Image.split(',')[1] || base64Image;
-    // --- STRATEGY: Use REASONING Model (3.0 Flash) for better descriptions ---
+    // --- STRATEGY: Use REASONING Model (2.0 Flash) for better descriptions ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [
@@ -594,7 +595,7 @@ export const mergeDescriptions = async (userDistinguishingFeatures: string, visu
   if (cached) return cached as any;
 
   try {
-    // --- STRATEGY: Use REASONING Model (3.0 Flash) ---
+    // --- STRATEGY: Use REASONING Model (2.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: {
         parts: [{ text: `
@@ -624,7 +625,7 @@ export const mergeDescriptions = async (userDistinguishingFeatures: string, visu
 
 export const validateReportContext = async (reportData: { title: string, category: string, location: string, description: string }): Promise<{ isValid: boolean, reason: string }> => {
   try {
-    // --- STRATEGY: Use SCANNER Model (2.5 Flash) for fast pre-submission validation ---
+    // --- STRATEGY: Use SCANNER Model (2.0 Flash) for fast pre-submission validation ---
     const text = await generateWithGauntlet({
        contents: {
          parts: [{ text: `
@@ -672,7 +673,7 @@ export const analyzeItemDescription = async (
       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     });
 
-    // --- STRATEGY: Use REASONING Model (3.0 Flash) ---
+    // --- STRATEGY: Use REASONING Model (2.0 Flash) ---
     const text = await generateWithGauntlet({
       contents: { parts },
       config: { responseMimeType: "application/json" }
@@ -751,7 +752,7 @@ export const compareItems = async (itemA: ItemReport, itemB: ItemReport): Promis
       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     });
 
-    // --- STRATEGY: Use REASONING Model (3.0 Flash) for high logic comparison ---
+    // --- STRATEGY: Use REASONING Model (2.0 Flash) for high logic comparison ---
     const text = await generateWithGauntlet({
        contents: { parts },
        config: { responseMimeType: "application/json" }
