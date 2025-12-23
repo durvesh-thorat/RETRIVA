@@ -9,17 +9,15 @@ export interface ComparisonResult {
   differences: string[];
 }
 
-// --- CONFIGURATION: THE EXPANDED FLASH PIPELINE ---
-// We try standard production models first, then specific versions, then experimental.
+// --- CONFIGURATION: THE RESILIENT PIPELINE ---
+// Prioritizing 2.0 Flash Exp as logs showed it existed (returned 429), while others returned 404.
 const MODEL_PIPELINE = [
-  'gemini-1.5-flash',           // Production Standard
-  'gemini-1.5-flash-latest',    // Latest Alias
-  'gemini-1.5-flash-001',       // Specific Version 001
-  'gemini-1.5-flash-002',       // Specific Version 002
-  'gemini-1.5-flash-8b',        // Flash 8b (Lite)
-  'gemini-2.0-flash-exp',       // 2.0 Experimental
-  'gemini-1.5-pro',             // Fallback: Pro (Standard)
-  'gemini-1.5-pro-latest'       // Fallback: Pro (Latest)
+  'gemini-2.0-flash-exp',        // Found in logs (hit quota)
+  'gemini-1.5-flash',            // Standard Production
+  'gemini-1.5-flash-8b',         // Lightweight / Newer
+  'gemini-1.5-flash-latest',     // Alias
+  'gemini-1.5-pro',              // Fallback
+  'gemini-2.0-pro-exp-02-05'     // Experimental Pro
 ];
 
 // --- HELPER: API KEY ---
@@ -45,20 +43,15 @@ const cleanJSON = (text: string): string => {
   return cleaned.trim();
 };
 
-// --- MODEL MANAGER CLASS (MEMORY ONLY) ---
+// --- MODEL MANAGER CLASS ---
 class ModelManager {
-  // We utilize in-memory banning only. 
-  // If the user refreshes, we want to try again, not be locked out for 24h.
+  // We only permanently ban 404s (Model Not Found) for the session.
+  // We do NOT ban 429s here; the retry logic handles them.
   private sessionBans: Set<string> = new Set();
 
   public banModel(model: string, reason: string) {
-    console.warn(`⚠️ Skipping model ${model} for this session: ${reason}`);
+    console.warn(`⛔ Banning model ${model} for session: ${reason}`);
     this.sessionBans.add(model);
-  }
-
-  public resetBans() {
-    console.info("🔄 Resetting model bans for retry...");
-    this.sessionBans.clear();
   }
 
   public getAvailableModels(): string[] {
@@ -68,87 +61,95 @@ class ModelManager {
 
 const modelManager = new ModelManager();
 
+// --- HELPER: DELAY ---
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // --- CORE GENERATION FUNCTION ---
-const generateWithGauntlet = async (params: any, systemInstruction?: string, retryCount = 0): Promise<string> => {
+const generateWithGauntlet = async (params: any, systemInstruction?: string): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("MISSING_API_KEY");
 
-  let pipeline = modelManager.getAvailableModels();
-
-  // SELF-HEALING: If we ran out of models, reset bans and try one more time.
-  if (pipeline.length === 0 && retryCount === 0) {
-    modelManager.resetBans();
-    pipeline = modelManager.getAvailableModels();
-  }
-
-  if (pipeline.length === 0) {
-     // If still empty after reset, we are truly stuck.
-     if (typeof window !== 'undefined') {
-        const event = new CustomEvent('retriva-toast', { 
-            detail: { 
-                message: "Connection to AI models failed. Please check API Key or Quota.", 
-                type: 'alert' 
-            } 
-        });
-        window.dispatchEvent(event);
-    }
-    throw new Error("ALL_MODELS_FAILED");
-  }
-
   const ai = new GoogleGenAI({ apiKey });
+  const pipeline = modelManager.getAvailableModels();
+  
+  if (pipeline.length === 0) {
+     throw new Error("No available models.");
+  }
+
   let lastError: any = null;
 
+  // Iterate through available models
   for (const model of pipeline) {
-    try {
-      // Clean config to be safe across models
-      const config = { ...params.config };
-      delete config.thinkingConfig; // Not all models support thinking
-      
-      if (systemInstruction) {
-         config.systemInstruction = systemInstruction;
-      }
+    let retries = 0;
+    const MAX_RETRIES = 3; // Retry the SAME model up to 3 times if it's busy
 
-      // console.log(`🚀 Attempting: ${model}`); 
+    while (retries <= MAX_RETRIES) {
+        try {
+            // Clean config
+            const config = { ...params.config };
+            delete config.thinkingConfig;
+            
+            if (systemInstruction) {
+                config.systemInstruction = systemInstruction;
+            }
 
-      const response = await ai.models.generateContent({
-        ...params,
-        model,
-        config
-      });
+            // console.log(`🚀 Trying ${model} (Attempt ${retries + 1})`);
 
-      // If we get here, it worked!
-      return response.text || "";
+            const response = await ai.models.generateContent({
+                ...params,
+                model,
+                config
+            });
 
-    } catch (error: any) {
-      const msg = (error.message || "").toLowerCase();
-      const status = error.status || 0;
-      
-      // LOGIC:
-      // 404: Model doesn't exist (or alias invalid) -> Skip for session
-      // 429: Quota exceeded -> Skip for session
-      // 503: Overloaded -> Skip (maybe retry later, but for now skip)
-      
-      if (status === 404 || msg.includes('not found')) {
-         modelManager.banModel(model, "404 Not Found");
-      } else if (status === 429 || msg.includes('quota') || msg.includes('exhausted')) {
-         modelManager.banModel(model, "429 Quota Exceeded");
-      } else {
-         // Other errors (500, 503, etc)
-         console.warn(`❌ Error with ${model}: ${msg}`);
-         // We usually skip these too to try the next best model
-      }
-      
-      lastError = error;
-      continue; // Try next model
+            return response.text || "";
+
+        } catch (error: any) {
+            const msg = (error.message || "").toLowerCase();
+            const status = error.status || 0;
+
+            // 1. MODEL NOT FOUND (404)
+            // Immediate failover to next model, ban this one.
+            if (status === 404 || msg.includes('not found')) {
+                modelManager.banModel(model, "404 Not Found");
+                break; // Break retry loop, move to next model in pipeline
+            }
+
+            // 2. RATE LIMIT (429) or OVERLOAD (503)
+            // Wait and retry the SAME model.
+            if (status === 429 || status === 503 || msg.includes('quota') || msg.includes('overloaded')) {
+                retries++;
+                if (retries <= MAX_RETRIES) {
+                    const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2s, 4s, 8s
+                    console.warn(`⏳ ${model} busy (429/503). Retrying in ${waitTime}ms...`);
+                    await delay(waitTime);
+                    continue; // Retry same model
+                } else {
+                    console.warn(`❌ ${model} exhausted retries. Moving to next model.`);
+                    lastError = error;
+                    break; // Break retry loop, move to next model
+                }
+            }
+
+            // 3. OTHER ERRORS (400, 500)
+            // Log and try next model immediately
+            console.warn(`❌ Error with ${model}: ${msg}`);
+            lastError = error;
+            break; // Break retry loop, move to next model
+        }
     }
   }
 
-  // If we exit the loop, all models in the current pipeline failed.
-  // If we haven't retried yet, trigger the self-healing recursion
-  if (retryCount === 0) {
-     return generateWithGauntlet(params, systemInstruction, 1);
+  // If we exhaust the entire pipeline
+  if (typeof window !== 'undefined') {
+      const event = new CustomEvent('retriva-toast', { 
+          detail: { 
+              message: "AI Service Busy. Please try again in a moment.", 
+              type: 'alert' 
+          } 
+      });
+      window.dispatchEvent(event);
   }
-
+  
   throw lastError || new Error("All AI models failed to respond.");
 };
 
@@ -176,7 +177,7 @@ export const instantImageCheck = async (base64Image: string): Promise<{
     return JSON.parse(cleanJSON(text));
   } catch (e) {
     console.error(e);
-    // Fail open (allow) but warn, or fail closed? Let's fail safe (no violation detected if AI fails)
+    // Fail safe
     return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
   }
 };
@@ -276,7 +277,6 @@ export const analyzeItemDescription = async (
       faceStatus: 'NONE'
     };
   } catch (error) {
-    // Return safe default if analysis fails
     return { 
       isViolating: false, isPrank: false, category: ItemCategory.OTHER, 
       title: title || "Item", description, distinguishingFeatures: [], summary: "", tags: [], faceStatus: 'NONE'
@@ -301,35 +301,23 @@ export const findPotentialMatches = async (
 ): Promise<{ id: string }[]> => {
   if (candidates.length === 0) return [];
   try {
-    const candidateList = candidates.map(c => ({ id: c.id, t: c.title, d: c.description, c: c.category }));
+    // Only send the first 5 candidates to avoid huge payload if we are rate limited
+    const candidateList = candidates.slice(0, 5).map(c => ({ id: c.id, t: c.title, d: c.description, c: c.category }));
     
-    // Limit candidates per batch to avoid token limits
-    const BATCH_SIZE = 10;
-    const allMatches: { id: string }[] = [];
-
-    for (let i = 0; i < candidateList.length; i += BATCH_SIZE) {
-        const batch = candidateList.slice(i, i + BATCH_SIZE);
-        const parts: any[] = [{ text: `Find matches for "${query.description}" in: ${JSON.stringify(batch)}. Return JSON { "matches": [{ "id": "..." }] }.` }];
+    const parts: any[] = [{ text: `Find matches for "${query.description}" in: ${JSON.stringify(candidateList)}. Return JSON { "matches": [{ "id": "..." }] }.` }];
     
-        if (query.imageUrls[0]) {
-            const data = query.imageUrls[0].split(',')[1];
-            if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
-        }
-
-        try {
-            const text = await generateWithGauntlet({
-                contents: { parts },
-                config: { responseMimeType: "application/json" }
-            }, "You are a matching engine.");
-            
-            const data = JSON.parse(cleanJSON(text));
-            if (data.matches) allMatches.push(...data.matches);
-        } catch (e) {
-            console.warn("Batch match failed", e);
-        }
+    if (query.imageUrls[0]) {
+       const data = query.imageUrls[0].split(',')[1];
+       if (data) parts.push({ inlineData: { mimeType: "image/jpeg", data } });
     }
-    
-    return allMatches;
+
+    const text = await generateWithGauntlet({
+      contents: { parts },
+      config: { responseMimeType: "application/json" }
+    }, "You are a matching engine.");
+
+    const data = JSON.parse(cleanJSON(text));
+    return data.matches || [];
   } catch (e) {
     console.error("Match error", e);
     return [];
