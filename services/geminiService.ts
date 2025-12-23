@@ -45,16 +45,41 @@ const cleanJSON = (text: string): string => {
 // --- MODEL MANAGER CLASS ---
 class ModelManager {
   // We only permanently ban 404s (Model Not Found) for the session.
-  // We do NOT ban 429s here; the retry logic handles them.
   private sessionBans: Set<string> = new Set();
+  // We temporarily cool down models that return 429s/503s so we don't hammer them across parallel requests
+  private temporaryCooldowns: Map<string, number> = new Map();
 
   public banModel(model: string, reason: string) {
     console.warn(`⛔ Banning model ${model} for session: ${reason}`);
     this.sessionBans.add(model);
   }
 
+  public markModelBusy(model: string) {
+    const cooldownDuration = 60000; // 1 minute cooldown
+    console.warn(`❄️ Cooling down ${model} for ${cooldownDuration/1000}s due to Rate Limiting.`);
+    this.temporaryCooldowns.set(model, Date.now() + cooldownDuration);
+  }
+
   public getAvailableModels(): string[] {
-    return MODEL_PIPELINE.filter(model => !this.sessionBans.has(model));
+    const now = Date.now();
+    
+    // 1. Filter out permanently banned models (404s)
+    let candidates = MODEL_PIPELINE.filter(model => !this.sessionBans.has(model));
+    
+    // 2. Filter out temporarily busy models (429s)
+    const ready = candidates.filter(model => {
+        const expiry = this.temporaryCooldowns.get(model);
+        return !expiry || now > expiry;
+    });
+
+    // 3. Fail-safe: If ALL models are cooling down, return the banned-filtered list
+    // (Better to try a busy model than to have 0 models and crash)
+    if (ready.length === 0 && candidates.length > 0) {
+        console.warn("⚠️ All models are currently busy. Ignoring cooldowns to attempt request.");
+        return candidates;
+    }
+
+    return ready;
   }
 }
 
@@ -80,7 +105,7 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
   // Iterate through available models
   for (const model of pipeline) {
     let retries = 0;
-    const MAX_RETRIES = 3; // Retry the SAME model up to 3 times if it's busy
+    const MAX_RETRIES = 1; // Reduced from 3 to 1 to failover faster if a model is stalling
 
     // Inner Loop: Retry the SAME model if it is just busy (429/503)
     while (retries <= MAX_RETRIES) {
@@ -119,13 +144,14 @@ const generateWithGauntlet = async (params: any, systemInstruction?: string): Pr
             if (status === 429 || status === 503 || msg.includes('quota') || msg.includes('overloaded')) {
                 retries++;
                 if (retries <= MAX_RETRIES) {
-                    // Exponential backoff: 2s, 4s, 8s
+                    // Exponential backoff: 2s (1st retry)
                     const waitTime = Math.pow(2, retries) * 1000; 
                     console.warn(`⏳ ${model} is busy (429). Retrying in ${waitTime/1000}s...`);
                     await delay(waitTime);
                     continue; // Continue inner loop (retry same model)
                 } else {
                     console.warn(`❌ ${model} exhausted retries. Failing over to next model.`);
+                    modelManager.markModelBusy(model); // Mark it busy for OTHER parallel requests too
                     lastError = error;
                     break; // Break inner loop, outer loop moves to next model
                 }
