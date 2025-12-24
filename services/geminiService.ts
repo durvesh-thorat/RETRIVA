@@ -46,27 +46,37 @@ const cleanJSON = (text: string): string => {
   return cleaned;
 };
 
+// --- HELPER: TEXT SIMILARITY (Jaccard Index) ---
+const calculateTextSimilarity = (str1: string, str2: string): number => {
+    const set1 = new Set(str1.toLowerCase().split(/\W+/).filter(x => x.length > 2));
+    const set2 = new Set(str2.toLowerCase().split(/\W+/).filter(x => x.length > 2));
+    
+    if (set1.size === 0 || set2.size === 0) return 0;
+    
+    const intersection = new Set([...set1].filter(x => set2.has(x)));
+    const union = new Set([...set1, ...set2]);
+    
+    return intersection.size / union.size;
+};
+
 // --- HELPER: PUTER WRAPPER ---
 const callPuterAI = async (
   prompt: string, 
   image?: string, 
   systemInstruction?: string
 ): Promise<string | null> => {
-  // 1. Check if Puter is loaded
   if (typeof puter === 'undefined') {
-      console.error("[Retriva] Puter.js is not loaded in window. Please check index.html script tag.");
+      console.error("[Retriva] Puter.js is not loaded in window.");
       return null;
   }
 
   try {
-    // 2. Construct Prompt
     const fullPrompt = systemInstruction 
       ? `SYSTEM INSTRUCTION: ${systemInstruction}\n\nUSER QUERY: ${prompt}` 
       : prompt;
 
     let response;
     
-    // 3. Call Puter
     try {
         if (image) {
            response = await puter.ai.chat(fullPrompt, image);
@@ -74,11 +84,9 @@ const callPuterAI = async (
            response = await puter.ai.chat(fullPrompt);
         }
     } catch (innerError: any) {
-        // Check for Auth error
         if (innerError?.message?.includes('401') || innerError?.code === 401) {
              console.log("[Puter] Auth required. Attempting to sign in...");
              await puter.auth.signIn();
-             // Retry once
              if (image) {
                 response = await puter.ai.chat(fullPrompt, image);
              } else {
@@ -89,12 +97,10 @@ const callPuterAI = async (
         }
     }
 
-    // 4. Normalize Response
     if (typeof response === 'string') return response;
     if (response?.message?.content) return response.message.content;
     if (response?.text) return response.text;
     
-    console.warn("[Puter] Unexpected response structure:", response);
     return JSON.stringify(response);
 
   } catch (error: any) {
@@ -109,42 +115,42 @@ const fallbackComparison = (item1: ItemReport, item2: ItemReport): ComparisonRes
      const sim = [];
      const diff = [];
      
-     // Category match
+     // 1. Category Check (High Weight)
      if (item1.category === item2.category) {
-         score += 20;
+         score += 25;
          sim.push("Same Category");
      } else {
-         diff.push("Different Category");
+         diff.push(`Different Categories (${item1.category} vs ${item2.category})`);
      }
      
-     // Title fuzzy match
-     const t1 = item1.title.toLowerCase();
-     const t2 = item2.title.toLowerCase();
-     if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) {
-         score += 30;
-         sim.push("Title Match");
+     // 2. Title Similarity
+     const titleSim = calculateTextSimilarity(item1.title, item2.title);
+     if (titleSim > 0.8) {
+         score += 35;
+         sim.push("Identical Titles");
+     } else if (titleSim > 0.4) {
+         score += 20;
+         sim.push("Similar Titles");
      }
 
-     // Description keyword overlap
-     const words1 = new Set(item1.description.toLowerCase().split(/\W+/));
-     const words2 = new Set(item2.description.toLowerCase().split(/\W+/));
-     const intersection = new Set([...words1].filter(x => words2.has(x) && x.length > 3));
-     
-     if (intersection.size > 0) {
-         const wordScore = Math.min(intersection.size * 5, 40);
-         score += wordScore;
-         sim.push(`${intersection.size} shared keywords`);
+     // 3. Description Similarity
+     const descSim = calculateTextSimilarity(item1.description, item2.description);
+     if (descSim > 0.8) {
+         score += 40;
+         sim.push("Matching Description");
+     } else if (descSim > 0.3) {
+         score += 15 + (descSim * 20);
+         sim.push("Shared Keywords");
      }
 
-     // Date check
+     // 4. Date Logic
      if (item1.date === item2.date) {
-         score += 10;
-         sim.push("Same Date");
+         score += 5; 
      }
 
      return {
-         confidence: Math.min(score, 100),
-         explanation: "Detailed analysis unavailable. Score estimated based on keyword overlap.",
+         confidence: Math.min(Math.round(score), 99),
+         explanation: "AI analysis unavailable. Score calculated based on keyword overlap and category matching.",
          similarities: sim,
          differences: diff
      };
@@ -154,42 +160,53 @@ const fallbackComparison = (item1: ItemReport, item2: ItemReport): ComparisonRes
 
 export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemReport[]): Promise<{ report: ItemReport, confidence: number, isOffline: boolean }[]> => {
     
-    console.log(`[Retriva] 🔍 Starting Smart Match via Puter for: ${sourceItem.title}`);
-
     const targetType = sourceItem.type === 'LOST' ? 'FOUND' : 'LOST';
     
+    // Filter candidates
     let candidates = allReports.filter(r => 
         r.status === 'OPEN' && 
         r.type === targetType &&
         r.id !== sourceItem.id
     );
 
-    if (candidates.length > 20) candidates = candidates.slice(0, 20);
     if (candidates.length === 0) return [];
+
+    // Optimize: Pre-filter by category to save tokens, unless "Other"
+    if (sourceItem.category !== ItemCategory.OTHER) {
+        const strictMatches = candidates.filter(c => c.category === sourceItem.category);
+        if (strictMatches.length > 0) candidates = strictMatches;
+    }
+
+    if (candidates.length > 10) candidates = candidates.slice(0, 10);
 
     let matchResults: MatchCandidate[] = [];
     let usedAI = false;
     
-    // Minify data
+    // Minify data for Prompt
     const aiCandidates = candidates.map(c => ({ 
         id: c.id, 
         t: c.title, 
-        d: c.description, 
+        d: c.description,
+        l: c.location,
         c: c.category
     }));
 
-    const sourceData = `ITEM: ${sourceItem.title}. DESC: ${sourceItem.description}. CAT: ${sourceItem.category}.`;
+    const sourceData = `ITEM: ${sourceItem.title}. DESC: ${sourceItem.description}. CAT: ${sourceItem.category}. LOC: ${sourceItem.location}`;
 
     try {
-        const systemPrompt = `
-          Match LOST/FOUND items.
-          OUTPUT: JSON { "matches": [ { "id": "string", "confidence": number } ] }
-          Confidence > 40 only.
+        const fullPrompt = `
+          Task: Match a ${sourceItem.type} item to potential candidates.
+          TARGET: ${sourceData}
+          CANDIDATES: ${JSON.stringify(aiCandidates)}
+          
+          Instructions:
+          - Return JSON: { "matches": [ { "id": "candidate_id", "confidence": number (0-100) } ] }
+          - High confidence (80-100) for exact title/description matches.
+          - Medium confidence (50-79) for same category and similar description.
+          - Ignore "Lost" vs "Found" label differences, focus on the object itself.
         `;
-
-        const fullPrompt = `CANDIDATES: ${JSON.stringify(aiCandidates)}\nTARGET: ${sourceData}`;
         
-        const text = await callPuterAI(fullPrompt, undefined, systemPrompt);
+        const text = await callPuterAI(fullPrompt);
 
         if (text) {
             const cleanText = cleanJSON(text);
@@ -201,21 +218,21 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
         console.error("[Gemini] Smart Match Logic Error:", e);
     }
 
-    // Fallback
-    if (!usedAI) {
-        matchResults = candidates
-            .map(c => {
-                let score = 0;
-                if (c.category === sourceItem.category) score += 30;
-                if (c.title.toLowerCase().includes(sourceItem.title.toLowerCase())) score += 40;
-                return { id: c.id, confidence: score };
-            })
-            .filter(m => m.confidence > 30);
+    // Fallback if AI fails or returns empty
+    if (!usedAI || matchResults.length === 0) {
+        matchResults = candidates.map(c => {
+            const titleSim = calculateTextSimilarity(sourceItem.title, c.title);
+            const descSim = calculateTextSimilarity(sourceItem.description, c.description);
+            // Weighted score
+            let score = (titleSim * 50) + (descSim * 50);
+            if (c.category === sourceItem.category) score += 10;
+            return { id: c.id, confidence: Math.min(score, 100) };
+        }).filter(m => m.confidence > 20);
     }
 
     const results = matchResults.map(m => {
         const report = candidates.find(c => c.id === m.id);
-        return report ? { report, confidence: m.confidence, isOffline: !usedAI } : null;
+        return report ? { report, confidence: Math.round(m.confidence), isOffline: !usedAI } : null;
     }).filter(Boolean) as { report: ItemReport, confidence: number, isOffline: boolean }[];
 
     return results.sort((a, b) => b.confidence - a.confidence);
@@ -394,26 +411,55 @@ export const parseSearchQuery = async (query: string): Promise<{ userStatus: 'LO
 };
 
 export const compareItems = async (item1: ItemReport, item2: ItemReport): Promise<ComparisonResult> => {
+    // 1. DETERMINISTIC PRE-CHECK (Fix for identical items)
+    const titleSim = calculateTextSimilarity(item1.title, item2.title);
+    const descSim = calculateTextSimilarity(item1.description, item2.description);
+    
+    // If text is extremely similar, bypass AI to avoid randomness/hallucinations
+    if (titleSim > 0.9 && descSim > 0.9) {
+        return {
+            confidence: 99,
+            explanation: "Items have identical titles and descriptions. Highly likely to be the same match.",
+            similarities: ["Title matches perfectly", "Description matches perfectly", "Category matches"],
+            differences: []
+        };
+    }
+
     try {
          const prompt = `
-            ACT AS AN EXPERT FORENSIC ANALYST.
-            COMPARE "Item A" (Lost) and "Item B" (Found).
-            Are they the SAME physical object?
+            ACT AS AN OBJECT RECOGNITION EXPERT.
+            Task: Compare Item A (Lost) with Item B (Found).
+            Goal: Determine if they are the SAME physical object.
             
-            Item A: ${item1.title} | ${item1.description} | ${item1.category} | ${item1.location}
-            Item B: ${item2.title} | ${item2.description} | ${item2.category} | ${item2.location}
+            Item A (Lost):
+            - Title: ${item1.title}
+            - Description: ${item1.description}
+            - Category: ${item1.category}
+            - Color/Brand: ${item1.tags.join(', ')}
+
+            Item B (Found):
+            - Title: ${item2.title}
+            - Description: ${item2.description}
+            - Category: ${item2.category}
+            - Color/Brand: ${item2.tags.join(', ')}
+
+            IMPORTANT INSTRUCTIONS:
+            1. Ignore the fact that one is "Lost" and one is "Found". Focus only on visual/physical properties.
+            2. If Title and Description are nearly identical, Confidence MUST be 95-100.
+            3. Return JSON ONLY.
             
-            Return JSON: 
+            JSON Structure:
             { 
-               "confidence": number (Integer 0-100, where 100 is identical match), 
+               "confidence": number (Integer 0-100), 
                "explanation": "concise reason", 
                "similarities": ["point 1", "point 2"], 
                "differences": ["point 1", "point 2"] 
             }
          `;
 
-         // Use image from item1 if available to ground the comparison
-         const img = item1.imageUrls?.[0] || item2.imageUrls?.[0];
+         // Use image from item2 (Found) as the visual anchor if available, 
+         // assuming user wants to check if the Found item matches their Lost description.
+         const img = item2.imageUrls?.[0] || item1.imageUrls?.[0];
          
          const text = await callPuterAI(prompt, img);
 
@@ -421,17 +467,31 @@ export const compareItems = async (item1: ItemReport, item2: ItemReport): Promis
          
          const result = JSON.parse(cleanJSON(text));
          
-         // Normalize confidence: 
-         // If AI gives 0.95 (0-1 scale), convert to 95. 
-         // If AI gives 1 (meaning 100% or 1%), assume 100% if it's visually identical, but safe bet is logic check.
+         // Robust Normalization
          let conf = result.confidence;
-         if (conf <= 1 && conf > 0) {
-            conf = conf * 100;
+         
+         // Handle AI returning string "95%"
+         if (typeof conf === 'string') {
+            conf = parseFloat(conf.replace('%', ''));
+         }
+
+         // Handle AI returning decimal 0.95
+         if (typeof conf === 'number') {
+            if (conf <= 1 && conf > 0) {
+                conf = conf * 100;
+            }
+         } else {
+             conf = 50; // Safety default
          }
          
+         // Final deterministic boost if string similarity is high but AI scored low
+         if ((titleSim > 0.8 || descSim > 0.8) && conf < 60) {
+             conf += 30; // Boost score because text matches strongly
+         }
+
          return {
              ...result,
-             confidence: Math.round(conf)
+             confidence: Math.round(Math.min(conf, 100))
          };
 
     } catch (e) {
