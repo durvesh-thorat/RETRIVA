@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { ItemReport } from '../types';
+import { ItemReport, ReportType } from '../types';
 import { compareItems, ComparisonResult, getMatchTier } from '../services/geminiService';
 import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, Loader2, Fingerprint, ShieldCheck, HelpCircle, Bot } from 'lucide-react';
 
@@ -148,8 +148,8 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                                 <div className="relative aspect-[4/3] rounded-xl overflow-hidden shadow-md ring-1 ring-slate-900/5 dark:ring-white/10 bg-slate-900">
                                    <SafeImage src={item.imageUrls[0]} alt={item.title} />
                                    <div className="absolute top-0 left-0 right-0 p-1.5 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
-                                      <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md text-white border border-white/20">
-                                        {idx === 0 ? 'Item A' : 'Item B'}
+                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur-md text-white border border-white/20 ${item.type === 'LOST' ? 'bg-orange-500/80' : 'bg-teal-500/80'}`}>
+                                        {item.type}
                                       </span>
                                    </div>
                                 </div>
@@ -167,7 +167,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                             </div>
                          </div>
 
-                         {/* NEW: AI Verdict Card (Below Details) */}
+                         {/* AI Verdict Card (Below Details) */}
                          <div className="relative overflow-hidden rounded-2xl border border-indigo-100 dark:border-indigo-900 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 p-5 shadow-sm group">
                             {/* Decorative Sparkle */}
                             <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -204,7 +204,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                                         {tier.label.split(' ')[0]}
                                     </h2>
                                     <p className={`text-[10px] font-bold uppercase tracking-widest opacity-70 ${tier.color}`}>
-                                        {tier.label.split(' ').slice(1).join(' ')} Match
+                                        {tier.label.split(' ').slice(1).join(' ')}
                                     </p>
                                 </div>
                             </div>
