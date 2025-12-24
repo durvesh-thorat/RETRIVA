@@ -237,35 +237,53 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 export const instantImageCheck = async (base64Image: string): Promise<{ 
   faceStatus: 'NONE' | 'ACCIDENTAL' | 'PRANK';
   isPrank: boolean;
-  violationType: 'GORE' | 'ANIMAL' | 'HUMAN' | 'NONE';
+  violationType: 'GORE' | 'ANIMAL' | 'HUMAN_PORTRAIT' | 'NONE';
+  context: 'ITEM' | 'DOCUMENT' | 'HUMAN';
   reason: string;
 }> => {
   try {
     const text = await callPuterAI(
-      `Safety Check. 
-       Rules: NO VIOLENCE, NO NUDITY, NO SELFIES.
-       Return JSON: { "violationType": "GORE"|"NUDITY"|"HUMAN"|"NONE", "isPrank": boolean, "reason": "string" }`,
+      `Safety & Context Analysis for Lost & Found.
+       
+       STRICT RULES:
+       1. REJECT ("HUMAN_PORTRAIT") if the main subject is a live human, selfie, or group photo.
+       2. REJECT ("GORE" / "ANIMAL") if violence, nudity, or dead animals.
+       3. ACCEPT ("DOCUMENT") if it is an ID Card, Student ID, or Document, EVEN IF IT HAS A FACE. We will redact it later.
+       4. ACCEPT ("ITEM") if it is an inanimate object (phone, keys, etc).
+
+       Return JSON: 
+       { 
+         "violationType": "GORE"|"ANIMAL"|"HUMAN_PORTRAIT"|"NONE", 
+         "context": "ITEM"|"DOCUMENT"|"HUMAN",
+         "isPrank": boolean, 
+         "reason": "short explanation" 
+       }`,
        base64Image
     );
 
-    if (!text) return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Offline" };
+    if (!text) return { faceStatus: 'NONE', violationType: 'NONE', context: 'ITEM', isPrank: false, reason: "Offline" };
     const result = JSON.parse(cleanJSON(text));
     
     return {
         faceStatus: result.faceStatus || 'NONE',
         violationType: result.violationType || 'NONE',
+        context: result.context || 'ITEM',
         isPrank: result.isPrank || false,
         reason: result.reason || ''
     };
   } catch (e) {
-    return { faceStatus: 'NONE', violationType: 'NONE', isPrank: false, reason: "Check unavailable" };
+    return { faceStatus: 'NONE', violationType: 'NONE', context: 'ITEM', isPrank: false, reason: "Check unavailable" };
   }
 };
 
 export const detectRedactionRegions = async (base64Image: string): Promise<number[][]> => {
   try {
     const text = await callPuterAI(
-      `Identify bounding boxes [ymin, xmin, ymax, xmax] (scale 0-1000) for: FACES, ID CARDS. 
+      `Identify bounding boxes [ymin, xmin, ymax, xmax] (scale 0-1000) for sensitive info.
+       TARGETS: 
+       1. FACES (Both real faces and ID card photos)
+       2. ID NUMBERS / NAMES / ADDRESSES
+       
        Return JSON { "regions": [[ymin, xmin, ymax, xmax], ...] }`,
        base64Image
     );

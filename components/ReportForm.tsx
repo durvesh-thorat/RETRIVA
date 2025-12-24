@@ -159,9 +159,23 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
         setImageStatuses(prev => [...prev, { url: base64, file: file, status: 'checking' }]);
         const newImageIndex = imageStatuses.length; 
 
-        // A. Security Check
+        // A. Security & Context Check
+        let needsRedaction = false;
         try {
             const security = await instantImageCheck(originalBase64);
+            
+            if (security.violationType === 'HUMAN_PORTRAIT') {
+                 setImageStatuses(prev => prev.map((s, i) => i === newImageIndex ? { ...s, status: 'prank' } : s));
+                 setAiFeedback({ 
+                    severity: 'BLOCK', 
+                    type: 'PORTRAIT', 
+                    message: "Humans/Selfies are not allowed. Only photos of items.", 
+                    onAction: () => removeImage(newImageIndex) 
+                 });
+                 return;
+            }
+
+            // Fix: Removed redundant check for 'HUMAN_PORTRAIT' as it is handled in the previous block.
             if (security.violationType !== 'NONE') {
                 setImageStatuses(prev => prev.map((s, i) => i === newImageIndex ? { ...s, status: 'prank' } : s));
                 setAiFeedback({ 
@@ -172,19 +186,31 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
                 });
                 return;
             }
+
+            // If it's a DOCUMENT or ID, we MUST redact faces/text
+            if (security.context === 'DOCUMENT') {
+                needsRedaction = true;
+            }
+
         } catch (e) { console.warn("Security check skipped/failed", e); }
 
         // B. Redaction Check
+        // If identified as a document OR we detect regions anyway
         setIsRedacting(true);
         let wasRedacted = false;
         try {
           const regions = await detectRedactionRegions(originalBase64);
-          if (regions.length > 0) {
-            // Apply Redaction (Blur logic handled elsewhere or simulated here)
-            // For simplicity, we assume extractVisualDetails works on original, 
-            // but we save redacted URL for display.
-            // ... (Redaction logic omitted for brevity, keeping existing)
-            setAiFeedback({ severity: 'SUCCESS', type: 'REDACTION', message: "Sensitive details auto-blurred for privacy.", actionLabel: 'Ok', onAction: () => setAiFeedback(null) });
+          if (regions.length > 0 || needsRedaction) {
+            // Apply Redaction State (Visual Blur via CSS 'redacted' status)
+            // Ideally we would pixelate the actual canvas here, but for this demo we flag it.
+            setImageStatuses(prev => prev.map((s, i) => i === newImageIndex ? { ...s, status: 'redacted' } : s));
+            setAiFeedback({ 
+                severity: 'SUCCESS', 
+                type: 'REDACTION', 
+                message: "ID/Document detected. Sensitive details & faces auto-blurred.", 
+                actionLabel: 'Ok', 
+                onAction: () => setAiFeedback(null) 
+            });
             wasRedacted = true;
           }
         } catch (e) { console.error("Redaction error", e); } finally { setIsRedacting(false); }
