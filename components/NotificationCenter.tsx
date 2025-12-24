@@ -1,164 +1,244 @@
 
-import React from 'react';
-import { AppNotification, ViewState } from '../types';
-import { Bell, Sparkles, MessageCircle, ShieldCheck, X, CheckCheck, Trash2, ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ItemReport } from '../types';
+import { compareItems, ComparisonResult } from '../services/geminiService';
+import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, Loader2, Fingerprint, Activity, BarChart3, Search, ShieldCheck, HelpCircle } from 'lucide-react';
 
-interface NotificationCenterProps {
-  notifications: AppNotification[];
+interface MatchComparatorProps {
+  item1: ItemReport;
+  item2: ItemReport;
   onClose: () => void;
-  onMarkAsRead: (id: string) => void;
-  onMarkAllAsRead: () => void;
-  onClearAll: () => void;
-  onNavigate: (view: ViewState) => void;
+  onContact: () => void;
 }
 
-const NotificationCenter: React.FC<NotificationCenterProps> = ({
-  notifications,
-  onClose,
-  onMarkAsRead,
-  onMarkAllAsRead,
-  onClearAll,
-  onNavigate
-}) => {
-  const getIcon = (type: AppNotification['type']) => {
-    switch (type) {
-      case 'match': return <Sparkles className="w-5 h-5 text-amber-500" />;
-      case 'message': return <MessageCircle className="w-5 h-5 text-brand-violet" />;
-      default: return <ShieldCheck className="w-5 h-5 text-emerald-500" />;
-    }
-  };
-
-  const formatTime = (ts: number) => {
-    const diff = Date.now() - ts;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  };
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
-
+const SafeImage = ({ src, alt }: { src?: string, alt?: string }) => {
+  const [error, setError] = useState(false);
+  if (src && !error) {
+    // Changed to object-contain so full item is visible for comparison
+    return <img src={src} className="w-full h-full object-contain bg-slate-100 dark:bg-slate-800/50 transition-transform duration-700 hover:scale-110" onError={() => setError(true)} alt={alt} />;
+  }
   return (
-    <>
-      {/* FOCUS & DEPTH: Dimmer backdrop blur overlay */}
-      <div 
-        className="fixed inset-0 z-[90] bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" 
-        onClick={onClose} 
-      />
-      
-      {/* POSITIONING & ANIMATION: Scale-in transition with wider offset position */}
-      <div className="fixed left-4 right-4 top-24 sm:absolute sm:top-20 sm:right-[-60px] sm:left-auto sm:w-[420px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_40px_120px_rgba(0,0,0,0.2)] dark:shadow-none border border-white dark:border-slate-800 overflow-hidden z-[100] animate-in zoom-in-95 fade-in duration-300 origin-top-right flex flex-col max-h-[75vh]">
-        
-        {/* Header */}
-        <div className="px-7 py-6 border-b border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <h3 className="font-black text-xl text-slate-800 dark:text-white tracking-tight">Activity</h3>
-            {unreadCount > 0 && (
-              <span className="px-3 py-1 bg-brand-violet text-white text-[10px] font-black rounded-full shadow-lg shadow-brand-violet/20 uppercase tracking-widest">
-                {unreadCount} New
-              </span>
-            )}
-          </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-all rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 hover:rotate-90"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* List Content: Styled Thin Violet Scrollbar */}
-        <div className="overflow-y-auto flex-1 notification-scrollbar scroll-smooth bg-white dark:bg-slate-900">
-          {notifications.length === 0 ? (
-            <div className="py-20 px-10 flex flex-col items-center justify-center text-center">
-              <div className="w-24 h-24 bg-indigo-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 ring-1 ring-indigo-100 dark:ring-slate-700">
-                <Bell className="w-10 h-10 text-indigo-200 dark:text-slate-600" />
-              </div>
-              <p className="text-slate-900 dark:text-white font-black text-lg tracking-tight">Zero notifications</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-[220px] font-medium leading-relaxed">
-                When people interact with your reports, they'll appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-50 dark:divide-slate-800/50">
-              {notifications.map((notification) => (
-                <div 
-                  key={notification.id}
-                  onClick={() => {
-                    onMarkAsRead(notification.id);
-                    if (notification.link) onNavigate(notification.link);
-                  }}
-                  className={`relative p-6 flex gap-4 cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-slate-800/50 group ${
-                    !notification.isRead ? 'bg-brand-violet/5 dark:bg-brand-violet/10' : ''
-                  }`}
-                >
-                  {/* Unread Indicator */}
-                  {!notification.isRead && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-violet"></div>
-                  )}
-
-                  {/* Icon */}
-                  <div className={`w-14 h-14 rounded-[1.25rem] shrink-0 flex items-center justify-center shadow-sm border border-slate-100 dark:border-slate-700/50 ${
-                    notification.type === 'match' ? 'bg-amber-50 dark:bg-amber-900/20' :
-                    notification.type === 'message' ? 'bg-indigo-50 dark:bg-indigo-900/20' :
-                    'bg-emerald-50 dark:bg-emerald-900/20'
-                  }`}>
-                    {getIcon(notification.type)}
-                  </div>
-
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex justify-between items-start mb-1.5">
-                      <p className={`text-sm font-black truncate pr-2 ${
-                        !notification.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
-                      }`}>
-                        {notification.title}
-                      </p>
-                      <span className="text-[10px] font-black text-slate-400 whitespace-nowrap bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
-                        {formatTime(notification.timestamp)}
-                      </span>
-                    </div>
-                    
-                    <p className={`text-xs leading-relaxed line-clamp-2 font-medium ${
-                       !notification.isRead ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'
-                    }`}>
-                      {notification.message}
-                    </p>
-
-                    {notification.link && (
-                       <div className="mt-2.5 flex items-center text-[10px] font-black text-brand-violet opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
-                          VIEW UPDATE <ChevronRight className="w-3 h-3 ml-1" />
-                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer: INTERACTIVITY - Mark All as Read & Clear All */}
-        {notifications.length > 0 && (
-          <div className="p-5 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-3">
-            <button 
-              onClick={(e) => { e.stopPropagation(); onMarkAllAsRead(); }}
-              disabled={unreadCount === 0}
-              className="py-3 px-4 rounded-2xl flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all hover:bg-brand-violet/5 dark:hover:bg-brand-violet/10 hover:text-brand-violet disabled:opacity-50 disabled:cursor-not-allowed group"
-            >
-              <CheckCheck className="w-4 h-4 group-hover:scale-110 transition-transform" /> Mark as Read
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); onClearAll(); }}
-              className="py-3 px-4 rounded-2xl flex items-center justify-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all border border-transparent hover:border-red-100 dark:hover:border-red-900/40 group"
-            >
-              <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" /> Clear History
-            </button>
-          </div>
-        )}
-      </div>
-    </>
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400">
+      <ScanLine className="w-8 h-8 mb-2 opacity-50" />
+      <span className="font-bold text-[10px] uppercase tracking-widest">No Visuals</span>
+    </div>
   );
 };
 
-export default NotificationCenter;
+const ComparisonRow = ({ label, val1, val2, icon: Icon }: { label: string, val1: string, val2: string, icon: any }) => (
+  <div className="grid grid-cols-[1fr_auto_1fr] gap-2 sm:gap-4 py-2 sm:py-3 border-b border-slate-100 dark:border-slate-800/50 last:border-0 items-center group hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors px-2 sm:px-4 rounded-xl">
+    <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 min-w-0">
+       <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-400 group-hover:text-indigo-600 transition-colors shrink-0">
+         <Icon className="w-3 h-3" />
+       </div>
+       <span className="truncate font-medium text-[11px] sm:text-xs">{val1}</span>
+    </div>
+    
+    <div className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[8px] font-extrabold text-slate-400 uppercase tracking-widest border border-slate-200 dark:border-slate-700 shadow-sm whitespace-nowrap">
+      {label}
+    </div>
+
+    <div className="flex items-center justify-end gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 min-w-0 text-right">
+       <span className="truncate font-medium text-[11px] sm:text-xs">{val2}</span>
+       <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-400 group-hover:text-indigo-600 transition-colors shrink-0">
+         <Icon className="w-3 h-3" />
+       </div>
+    </div>
+  </div>
+);
+
+const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose, onContact }) => {
+  const [analysis, setAnalysis] = useState<ComparisonResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState(0);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setLoadingStep(prev => (prev + 1) % 3);
+      }, 800);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    const runAnalysis = async () => {
+      setLoading(true);
+      try {
+        const result = await compareItems(item1, item2);
+        // Default structure if result is missing to prevent crash
+        setAnalysis(result || { 
+            confidence: 50, 
+            explanation: "Could not retrieve full analysis.", 
+            similarities: ["Comparison attempted"], 
+            differences: ["Data unavailable"] 
+        });
+      } catch (e) {
+        setAnalysis({ confidence: 0, explanation: "Comparison unavailable.", similarities: [], differences: [] });
+      } finally {
+        setLoading(false);
+      }
+    };
+    runAnalysis();
+  }, [item1, item2]);
+
+  // --- TIER LOGIC ---
+  const getMatchTier = (confidence: number) => {
+    if (confidence >= 90) return { label: "Definitive Match", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-900/20", border: "border-emerald-200 dark:border-emerald-800", icon: ShieldCheck };
+    if (confidence >= 70) return { label: "Strong Candidate", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-900/20", border: "border-blue-200 dark:border-blue-800", icon: Check };
+    if (confidence >= 40) return { label: "Potential Match", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-900/20", border: "border-amber-200 dark:border-amber-800", icon: HelpCircle };
+    return { label: "Unlikely Match", color: "text-slate-500 dark:text-slate-400", bg: "bg-slate-50 dark:bg-slate-800", border: "border-slate-200 dark:border-slate-700", icon: X };
+  };
+
+  const tier = getMatchTier(analysis?.confidence || 0);
+  const TierIcon = tier.icon;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-8 md:p-12 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
+       <div className="w-full max-w-4xl h-[100dvh] sm:h-[80vh] md:h-[650px] relative rounded-none sm:rounded-[2rem] p-[1px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-2xl flex flex-col overflow-hidden">
+          
+          <div className="w-full h-full bg-white dark:bg-slate-950 rounded-none sm:rounded-[31px] overflow-hidden flex flex-col relative">
+             
+             {/* Sticky Header */}
+             <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl z-20 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white animate-pulse-slow">
+                    <Fingerprint className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 leading-none mb-0.5">
+                      Gemini Match
+                    </h2>
+                    <p className="text-[10px] text-slate-500 font-medium">Deep comparison & verification</p>
+                  </div>
+                </div>
+                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+             </div>
+
+             {/* Content */}
+             <div className="flex-1 overflow-y-auto lg:overflow-hidden relative bg-slate-50/50 dark:bg-slate-900/50">
+                
+                {loading ? (
+                   <div className="absolute inset-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center">
+                      <div className="relative w-16 h-16 sm:w-20 sm:h-20 mb-6 sm:mb-8">
+                         <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+                         <div className="absolute inset-0 rounded-full border-t-4 border-indigo-500 animate-spin"></div>
+                         <div className="absolute inset-0 flex items-center justify-center">
+                            <Sparkles className="w-6 h-6 sm:w-8 h-8 text-indigo-500 animate-pulse" />
+                         </div>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mb-2">Analyzing Match</h3>
+                      <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
+                         {loadingStep === 0 && "Comparing visual features..."}
+                         {loadingStep === 1 && "Verifying timestamps & location..."}
+                         {loadingStep === 2 && "Calculating compatibility..."}
+                      </p>
+                   </div>
+                ) : (
+                   <div className="flex flex-col lg:flex-row h-auto lg:h-full">
+                      
+                      {/* Left Panel: Visuals & Data */}
+                      <div className="w-full lg:flex-1 lg:overflow-y-auto p-4 sm:p-6">
+                         
+                         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
+                            {[item1, item2].map((item, idx) => (
+                              <div key={idx} className="space-y-2">
+                                <div className="relative aspect-[4/3] rounded-xl overflow-hidden shadow-md ring-1 ring-slate-900/5 dark:ring-white/10 bg-slate-900">
+                                   <SafeImage src={item.imageUrls[0]} alt={item.title} />
+                                   <div className="absolute top-0 left-0 right-0 p-1.5 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+                                      <span className="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md text-white border border-white/20">
+                                        {idx === 0 ? 'Item A' : 'Item B'}
+                                      </span>
+                                   </div>
+                                </div>
+                                <h3 className="text-[10px] sm:text-xs font-bold text-slate-900 dark:text-white text-center px-1 line-clamp-1">{item.title}</h3>
+                              </div>
+                            ))}
+                         </div>
+
+                         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-5">
+                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                               <ComparisonRow label="CATEGORY" icon={Tag} val1={item1.category} val2={item2.category} />
+                               <ComparisonRow label="TIME" icon={Clock} val1={`${item1.date} ${item1.time}`} val2={`${item2.date} ${item2.time}`} />
+                               <ComparisonRow label="LOCATION" icon={MapPin} val1={item1.location} val2={item2.location} />
+                            </div>
+                         </div>
+                      </div>
+
+                      {/* Right Panel: Verdict & Analysis */}
+                      <div className="w-full lg:w-[320px] bg-white dark:bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 flex flex-col lg:h-full z-10">
+                         
+                         <div className="flex-1 lg:overflow-y-auto p-4 sm:p-6">
+                            
+                            {/* NEW: Unified Verdict Card (Replaces Score) */}
+                            <div className={`mb-6 p-6 rounded-2xl border ${tier.bg} ${tier.border} relative overflow-hidden text-center transition-colors duration-500`}>
+                               <div className="flex items-center justify-center gap-2 mb-3">
+                                   <TierIcon className={`w-5 h-5 ${tier.color}`} />
+                                   <span className={`text-lg font-black uppercase tracking-tight ${tier.color}`}>{tier.label}</span>
+                               </div>
+                               
+                               <div className="h-px w-16 bg-current opacity-20 mx-auto mb-3"></div>
+
+                               <p className="text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed text-left">
+                                   {analysis?.explanation}
+                               </p>
+                            </div>
+
+                            <div className="space-y-5">
+                               <div className="animate-slide-up delay-100">
+                                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                     <Check className="w-3 h-3 text-emerald-500" /> Key Matches
+                                  </h4>
+                                  <div className="space-y-1.5">
+                                     {analysis?.similarities && analysis.similarities.length > 0 ? (
+                                        analysis.similarities.slice(0, 3).map((sim, i) => (
+                                          <div key={i} className="px-2.5 py-1.5 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-lg border border-emerald-100 dark:border-emerald-900/20 text-[10px] sm:text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                                             {sim}
+                                          </div>
+                                        ))
+                                     ) : <p className="text-[10px] text-slate-400 italic">No specific matches.</p>}
+                                  </div>
+                               </div>
+
+                               <div className="animate-slide-up delay-200">
+                                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                     <AlertTriangle className="w-3 h-3 text-red-500" /> Differences
+                                  </h4>
+                                  <div className="space-y-1.5">
+                                     {analysis?.differences && analysis.differences.length > 0 ? (
+                                        analysis.differences.slice(0, 3).map((diff, i) => (
+                                          <div key={i} className="px-2.5 py-1.5 bg-red-50/50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/20 text-[10px] sm:text-xs font-semibold text-red-800 dark:text-red-200">
+                                             {diff}
+                                          </div>
+                                        ))
+                                     ) : <p className="text-[10px] text-slate-400 italic">No significant differences.</p>}
+                                  </div>
+                               </div>
+                            </div>
+                         </div>
+
+                         {/* Footer Action */}
+                         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm mt-auto lg:sticky lg:bottom-0">
+                            <button onClick={onContact} className="w-full py-3 bg-brand-violet hover:bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-95">
+                               <MessageCircle className="w-4 h-4" /> Start Conversation
+                            </button>
+                         </div>
+
+                      </div>
+                   </div>
+                )}
+             </div>
+          </div>
+       </div>
+    </div>
+  );
+};
+
+export default MatchComparator;
