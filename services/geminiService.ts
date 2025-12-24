@@ -453,20 +453,23 @@ export const compareItems = async (item1: ItemReport, item2: ItemReport): Promis
         if (item2.imageUrls?.[0]) imagesToAnalyze.push(item2.imageUrls[0]);
 
         const prompt = `
-           You are a highly precise Forensic Object Analyst using Gemini 3.0 Vision capabilities.
+           You are an expert Lost & Found Verification Specialist.
            
-           OBJECTIVE:
-           Compare "Item A" (Lost Report) and "Item B" (Found Report) tip-to-tip and determine the probability (0-100%) that they are the EXACT SAME physical object.
+           CONTEXT:
+           We are trying to match a specific "Lost Item" (Item A) with a potential "Found Item" (Item B).
+           Your sole job is to determine if these two reports refer to the **SAME PHYSICAL OBJECT**.
            
-           DATA SOURCE:
-           Item A:
+           INPUT DATA:
+           [ITEM A - ${item1.type}]
            - Title: "${item1.title}"
+           - Description: "${item1.description}"
            - Category: "${item1.category}"
            - Specs: ${JSON.stringify(item1.specs || {})}
            - Visual Tags: "${item1.tags.join(', ')}"
            
-           Item B:
+           [ITEM B - ${item2.type}]
            - Title: "${item2.title}"
+           - Description: "${item2.description}"
            - Category: "${item2.category}"
            - Specs: ${JSON.stringify(item2.specs || {})}
            - Visual Tags: "${item2.tags.join(', ')}"
@@ -474,23 +477,24 @@ export const compareItems = async (item1: ItemReport, item2: ItemReport): Promis
            VISUAL EVIDENCE:
            ${imagesToAnalyze.length} images provided.
 
-           EXECUTION PLAN:
-           1. SPEC ANALYSIS: Compare strict specs (e.g. Serial #, Brand, Model). Exact Match = 100%. Mismatch = 0%.
-           2. VISUAL ANALYSIS: Inspect images for unique identifiers (scratches, stickers, wear patterns, exact color hue).
-           3. EVALUATE: Calculate a confidence score based on the weight of evidence.
-           
-           SCORING CALIBRATION:
-           - 99-100%: Definitive Match (Matching Serial # or unique wear pattern).
-           - 80-94%: High Probability (Identical model + color + no contradictions).
-           - 50-79%: Plausible (Same generic category/color).
-           - 0-49%: Mismatch (Different specs, brand, or shape).
+           ANALYSIS INSTRUCTIONS:
+           1. **ACCOUNT FOR CIRCUMSTANCE**: Lighting conditions, camera angles, and user description accuracy may vary. Do NOT treat minor lighting/angle differences as physical differences.
+           2. **LOOK FOR IDENTIFIERS**: Focus on Brands, Logos, Models, Unique Scratches, Stickers, or distinctive wear patterns.
+           3. **IDENTIFY DEAL-BREAKERS**: A mismatch is only valid if it proves they are different objects (e.g. Different Brand, Different number of buttons, clearly different shape).
+           4. **VERDICT**: If they look like the same model and color with no visible contradictions, the score should be HIGH.
+
+           SCORING GUIDE:
+           - 95-100%: DEFINITIVE (Matching Serial # or unique wear/damage).
+           - 80-94%: HIGH PROBABILITY (Identical make/model/color, no contradictions).
+           - 50-79%: PLAUSIBLE (Same generic item type & color, but vague details).
+           - 0-49%: MISMATCH (Different brand, feature, or form factor).
 
            OUTPUT FORMAT (JSON ONLY):
            { 
               "confidence": number (Integer 0-100), 
-              "explanation": "Detailed chain-of-thought reasoning.", 
-              "similarities": ["Sim 1", "Sim 2"], 
-              "differences": ["Diff 1", "Diff 2"] 
+              "explanation": "Write a verdict for the user. Example: 'These appear to be the same Logitech mouse. Both have the same matte black finish and shape. The lighting is different, but the form factor matches.'", 
+              "similarities": ["List key matching features"], 
+              "differences": ["Only list REAL physical contradictions (e.g. 'Different Logo'), ignore lighting/angle"] 
            }
         `;
 
