@@ -575,6 +575,18 @@ const App: React.FC = () => {
           />
       )}
 
+      {/* NOTIFICATION CENTER OVERLAY (Root Level to fix stacking context) */}
+      {showNotificationCenter && (
+        <NotificationCenter 
+          notifications={notifications} 
+          onClose={() => setShowNotificationCenter(false)} 
+          onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))} 
+          onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))} 
+          onClearAll={() => { setNotifications([]); setShowNotificationCenter(false); }} 
+          onNavigate={(v) => { setView(v); setShowNotificationCenter(false); }} 
+        />
+      )}
+
       {/* Hide standard Nav if on Features Page for immersive effect, OR keep it. 
           The design prompt requested a "Brand New Page", implies fullscreen. 
           Let's conditionally hide the main nav if view === 'FEATURES' */}
@@ -632,13 +644,11 @@ const App: React.FC = () => {
                    <MessageCircle className="w-5 h-5" />
                    {unreadMessageCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
                  </button>
-                 <div className="relative">
-                   <button onClick={() => setShowNotificationCenter(!showNotificationCenter)} className={`p-2 rounded-full transition-all ${showNotificationCenter ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
-                     <Bell className="w-5 h-5" />
-                     {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
-                   </button>
-                   {showNotificationCenter && <NotificationCenter notifications={notifications} onClose={() => setShowNotificationCenter(false)} onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))} onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))} onClearAll={() => { setNotifications([]); setShowNotificationCenter(false); }} onNavigate={(v) => { setView(v); setShowNotificationCenter(false); }} />}
-                 </div>
+                 <button onClick={() => setShowNotificationCenter(!showNotificationCenter)} className={`relative p-2 rounded-full transition-all ${showNotificationCenter ? 'bg-indigo-50 dark:bg-slate-800 text-indigo-600' : 'hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-500'}`}>
+                   <Bell className="w-5 h-5" />
+                   {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-950"></span>}
+                 </button>
+                 
                  <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
                  <button onClick={() => setView('PROFILE')} className="flex items-center gap-3 pl-1 hover:opacity-80 transition-opacity">
                     <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-slate-800 overflow-hidden ring-2 ring-white dark:ring-slate-900 shadow-sm">
