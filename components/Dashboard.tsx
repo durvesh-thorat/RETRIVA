@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ItemReport, ReportType, User, ViewState } from '../types';
-import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint, Radar, ChevronLeft, Target, User as UserIcon, WifiOff, HelpCircle, X, Check } from 'lucide-react';
+import { Search, MapPin, SearchX, Box, Sparkles, ArrowRight, ScanLine, Loader2, RefreshCw, History, CheckCircle2, AlertCircle, Scan, Zap, Layers, Network, Wrench, ShieldCheck, Cpu, ChevronRight, Fingerprint, Radar, ChevronLeft, Target, User as UserIcon, WifiOff, HelpCircle, X, Check, Activity, Clock } from 'lucide-react';
 import ReportDetails from './ReportDetails';
 import { parseSearchQuery, findSmartMatches, getMatchTier } from '../services/geminiService';
 
@@ -87,12 +87,12 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, onClick }) => {
   );
 };
 
-// --- AI DISCOVERY HUB ---
+// --- AI DISCOVERY HUB (SPATIAL CANVAS REDESIGN) ---
 const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: ItemReport[], onCompare: any }) => {
   const myOpenLostReports = useMemo(() => reports.filter(r => r.reporterId === user.id && r.status === 'OPEN' && r.type === ReportType.LOST), [reports, user.id]);
   const [selectedItem, setSelectedItem] = useState<ItemReport | null>(null);
   
-  // States: idle, scanning, results
+  // States: idle, scanning, complete
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'complete'>('idle');
   const [matches, setMatches] = useState<{ report: ItemReport, confidence: number, isOffline: boolean }[]>([]);
 
@@ -124,166 +124,222 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
   if (myOpenLostReports.length === 0) return null; 
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[500px] animate-fade-in mb-12">
+    <div className="relative w-full h-[650px] bg-[#020617] rounded-[2.5rem] overflow-hidden border border-slate-800 shadow-2xl mb-12 flex flex-col md:flex-row font-sans">
         
-        {/* SIDEBAR: My Active Cases */}
-        <div className="w-full lg:w-1/3 flex flex-col gap-4 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 p-6 overflow-hidden">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <Target className="w-4 h-4 text-indigo-500" /> Active Cases
-            </h3>
-            <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                {myOpenLostReports.map(item => (
-                    <button
+        {/* Background - Deep Navy/Black Spatial Field (No Grid) */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#020617] via-[#050b1f] to-[#000000] z-0"></div>
+        
+        {/* Ambient Glows */}
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+
+        {/* --- LEFT PANEL: ACTIVE CASES (Floating Strip) --- */}
+        <div className="relative z-20 w-full md:w-72 p-6 flex flex-col gap-4 bg-[#0a0f26]/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-white/5 h-full">
+             <div className="flex items-center gap-3 mb-2">
+                 <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+                    <Target className="w-4 h-4 text-white" />
+                 </div>
+                 <div>
+                    <h3 className="text-sm font-bold text-white tracking-wide">Active Cases</h3>
+                    <p className="text-[10px] text-slate-500">Select item to scan</p>
+                 </div>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+                 {myOpenLostReports.map(item => (
+                     <div 
                         key={item.id}
                         onClick={() => setSelectedItem(item)}
-                        className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
+                        className={`group relative p-3 rounded-2xl border transition-all cursor-pointer overflow-hidden flex items-center gap-3 ${
                             selectedItem?.id === item.id 
-                            ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 shadow-sm' 
-                            : 'bg-slate-50 dark:bg-slate-950/50 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'
+                            ? 'bg-white/10 border-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.2)]' 
+                            : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
                         }`}
-                    >
-                        <div className="w-12 h-12 rounded-lg bg-white dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
-                            {item.imageUrls[0] ? <img src={item.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-5 h-5 m-auto text-slate-300" />}
+                     >
+                        <div className="w-10 h-10 rounded-lg bg-black/50 overflow-hidden shrink-0 border border-white/10 relative">
+                            {item.imageUrls[0] ? <img src={item.imageUrls[0]} className="w-full h-full object-cover" /> : <Box className="w-4 h-4 m-auto text-slate-500" />}
+                            {selectedItem?.id === item.id && <div className="absolute inset-0 bg-indigo-500/20 mix-blend-overlay"></div>}
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-bold truncate ${selectedItem?.id === item.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-300'}`}>{item.title}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{item.date}</p>
-                        </div>
-                        {selectedItem?.id === item.id && <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>}
-                    </button>
-                ))}
-            </div>
-        </div>
-
-        {/* MAIN STAGE: Scanner */}
-        <div className="flex-1 bg-slate-900 rounded-[2rem] border border-slate-800 overflow-hidden relative flex flex-col shadow-2xl">
-            
-            {/* Background Grid */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
-            
-            {/* Header */}
-            <div className="relative z-10 px-6 py-4 border-b border-white/5 flex justify-between items-center bg-slate-900/50 backdrop-blur-md">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
-                        <Radar className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-bold text-white leading-none">AI Discovery Hub</h3>
-                        <p className="text-[10px] text-slate-500 font-mono mt-1">GEMINI 3.0 // ACTIVE</p>
-                    </div>
-                </div>
-                
-                {selectedItem && scanState !== 'scanning' && (
-                    <button 
-                        onClick={runScan}
-                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-600/20 active:scale-95 flex items-center gap-2"
-                    >
-                        {scanState === 'complete' ? <RefreshCw className="w-3.5 h-3.5" /> : <Scan className="w-3.5 h-3.5" />}
-                        {scanState === 'complete' ? 'Re-Scan' : 'Start Scan'}
-                    </button>
-                )}
-            </div>
-
-            {/* SCANNING VISUALIZER */}
-            <div className="flex-1 relative flex flex-col items-center justify-center p-6">
-                
-                {/* IDLE STATE */}
-                {scanState === 'idle' && selectedItem && (
-                    <div className="text-center animate-in fade-in zoom-in-95">
-                        <div className="relative w-24 h-24 mx-auto mb-6">
-                            <div className="absolute inset-0 bg-indigo-500/20 rounded-full animate-ping"></div>
-                            <div className="relative w-full h-full rounded-full bg-slate-800 border-2 border-indigo-500/50 overflow-hidden flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.3)]">
-                                {selectedItem.imageUrls[0] ? (
-                                    <img src={selectedItem.imageUrls[0]} className="w-full h-full object-cover opacity-80" />
-                                ) : <Box className="w-8 h-8 text-indigo-400" />}
+                        <div className="min-w-0">
+                            <p className={`text-xs font-bold truncate ${selectedItem?.id === item.id ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>{item.title}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[9px] text-slate-500 uppercase">{item.category}</span>
                             </div>
                         </div>
-                        <h2 className="text-2xl font-black text-white tracking-tight mb-2">Ready to Scan</h2>
-                        <p className="text-slate-400 text-sm max-w-xs mx-auto">
-                            Initiate AI search to cross-reference "{selectedItem.title}" against visual and semantic database entries.
-                        </p>
-                    </div>
-                )}
-
-                {/* SCANNING STATE */}
-                {scanState === 'scanning' && (
-                    <div className="flex flex-col items-center justify-center w-full h-full">
-                        {/* Radar Animation */}
-                        <div className="relative w-64 h-64 flex items-center justify-center">
-                            <div className="absolute inset-0 border border-indigo-500/30 rounded-full"></div>
-                            <div className="absolute inset-[15%] border border-indigo-500/20 rounded-full"></div>
-                            <div className="absolute inset-[30%] border border-indigo-500/10 rounded-full"></div>
-                            <div className="absolute w-full h-full bg-gradient-to-r from-transparent via-indigo-500/10 to-transparent animate-spin opacity-50" style={{ clipPath: 'polygon(50% 50%, 100% 0, 100% 50%)' }}></div>
-                            
-                            {/* Center Item */}
-                            <div className="relative z-10 w-20 h-20 rounded-full bg-slate-900 border border-indigo-500 shadow-[0_0_50px_rgba(99,102,241,0.5)] overflow-hidden">
-                                {selectedItem?.imageUrls[0] && <img src={selectedItem.imageUrls[0]} className="w-full h-full object-cover opacity-80" />}
-                            </div>
-                        </div>
-                        <div className="mt-8 space-y-2 text-center">
-                            <div className="text-indigo-400 font-mono text-xs animate-pulse">ANALYZING VECTORS...</div>
-                            <div className="text-slate-500 font-mono text-[10px]">Processing visual & semantic data</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* RESULTS STATE */}
-                {scanState === 'complete' && (
-                    <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4">
-                        {matches.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center">
-                                <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4 border border-slate-700">
-                                    <ShieldCheck className="w-8 h-8 text-emerald-500" />
-                                </div>
-                                <h3 className="text-lg font-bold text-white">Monitoring Active</h3>
-                                <p className="text-slate-400 text-sm max-w-sm mt-2 leading-relaxed">
-                                    No direct matches found right now. Our AI agent has indexed this item and will alert you if a matching item is reported.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full overflow-y-auto pr-2 custom-scrollbar max-h-full content-start">
-                                {matches.map(({ report, confidence, isOffline }) => {
-                                    const tier = getMatchTier(confidence);
-                                    return (
-                                        <div key={report.id} className="bg-slate-800/50 border border-white/10 rounded-xl p-3 flex gap-3 hover:bg-slate-800 transition-colors group">
-                                            <div className="w-20 h-20 bg-slate-900 rounded-lg overflow-hidden shrink-0 relative border border-white/5">
-                                                {report.imageUrls[0] && <img src={report.imageUrls[0]} className="w-full h-full object-cover" />}
-                                                <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase backdrop-blur-md text-slate-900 ${
-                                                    tier.label === 'Definitive Match' ? 'bg-emerald-400' :
-                                                    tier.label === 'Strong Candidate' ? 'bg-blue-400' : 'bg-amber-400'
-                                                }`}>
-                                                    {tier.label === 'Definitive Match' ? 'Exact' : tier.label === 'Strong Candidate' ? 'Strong' : 'Potential'}
-                                                </div>
-                                            </div>
-                                            <div className="flex-1 min-w-0 flex flex-col">
-                                                <div className="flex justify-between items-start">
-                                                    <h4 className="text-sm font-bold text-white truncate pr-2">{report.title}</h4>
-                                                    {isOffline && (
-                                                      <span title="Offline Match">
-                                                        <WifiOff className="w-3 h-3 text-slate-500" />
-                                                      </span>
-                                                    )}
-                                                </div>
-                                                <p className="text-xs text-slate-400 truncate mt-0.5 flex items-center gap-1"><MapPin className="w-3 h-3" /> {report.location}</p>
-                                                <div className="mt-auto pt-2">
-                                                    <button 
-                                                        onClick={() => onCompare(selectedItem!, report)}
-                                                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors"
-                                                    >
-                                                        Verify Match
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                        {selectedItem?.id === item.id && (
+                           <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)] animate-pulse"></div>
                         )}
-                    </div>
-                )}
-
-            </div>
+                     </div>
+                 ))}
+             </div>
         </div>
+
+        {/* --- CENTER STAGE: SPATIAL CANVAS --- */}
+        <div className="flex-1 relative flex items-center justify-center perspective-1000 overflow-hidden p-8">
+             
+             {selectedItem ? (
+                 <>
+                    {/* Floating Attribute Card: CATEGORY (Top Left) */}
+                    <div className="absolute top-16 left-16 md:top-20 md:left-24 animate-pulse-soft hidden md:block">
+                        <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg relative group hover:bg-white/5 transition-colors">
+                            <div className="absolute -bottom-6 left-1/2 w-px h-6 bg-gradient-to-b from-cyan-500/50 to-transparent"></div>
+                            <p className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                               <Layers className="w-3 h-3" /> Category
+                            </p>
+                            <p className="text-sm font-bold text-white group-hover:text-cyan-200 transition-colors">{selectedItem.category}</p>
+                        </div>
+                    </div>
+
+                    {/* Floating Attribute Card: DATE (Bottom Right) */}
+                    <div className="absolute bottom-20 right-16 md:bottom-32 md:right-24 animate-pulse-soft hidden md:block" style={{ animationDelay: '1s' }}>
+                         <div className="absolute -top-6 left-1/2 w-px h-6 bg-gradient-to-t from-purple-500/50 to-transparent"></div>
+                         <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
+                            <p className="text-[9px] text-purple-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                               <Clock className="w-3 h-3" /> Date Lost
+                            </p>
+                            <p className="text-sm font-bold text-white group-hover:text-purple-200 transition-colors">{selectedItem.date}</p>
+                         </div>
+                    </div>
+
+                     {/* Floating Attribute Card: STATUS (Top Right) */}
+                    <div className="absolute top-24 right-16 md:top-32 md:right-20 animate-pulse-soft hidden md:block" style={{ animationDelay: '0.5s' }}>
+                        <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
+                             <div className="absolute -bottom-8 left-1/2 w-px h-8 bg-gradient-to-b from-emerald-500/50 to-transparent"></div>
+                             <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                               <Activity className="w-3 h-3" /> System Status
+                             </p>
+                             <div className="flex items-center gap-2 justify-center">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <p className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors">
+                                   {scanState === 'scanning' ? 'Scanning...' : 'Ready'}
+                                </p>
+                             </div>
+                        </div>
+                    </div>
+
+                    {/* CENTRAL HIGH-TECH CARD */}
+                    <div className="relative group z-10 w-full max-w-sm md:w-[340px]">
+                        
+                        {/* Neon Glow Container */}
+                        <div className={`absolute -inset-[2px] bg-gradient-to-b from-cyan-400 to-blue-600 rounded-[2.2rem] opacity-30 group-hover:opacity-100 blur-lg transition duration-1000 ${scanState === 'scanning' ? 'opacity-100 animate-pulse' : ''}`}></div>
+                        
+                        {/* Main Card Body */}
+                        <div className="relative w-full h-[450px] bg-[#0c1226] rounded-[2rem] border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+                             
+                             {/* Image Area */}
+                             <div className="h-72 bg-black relative overflow-hidden group-hover:h-72 transition-all">
+                                 {selectedItem.imageUrls[0] ? (
+                                    <img src={selectedItem.imageUrls[0]} className="w-full h-full object-cover opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-700" />
+                                 ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-[#050914]">
+                                       <Box className="w-16 h-16 text-slate-800" />
+                                    </div>
+                                 )}
+                                 
+                                 {/* Scanning Beam (Vertical) */}
+                                 {scanState === 'scanning' && (
+                                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/10 to-transparent w-full h-full animate-[slideUp_2s_infinite]">
+                                         <div className="absolute bottom-0 w-full h-[2px] bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)]"></div>
+                                     </div>
+                                 )}
+
+                                 {/* Overlay Gradient */}
+                                 <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0c1226] to-transparent"></div>
+                             </div>
+
+                             {/* Card Content */}
+                             <div className="flex-1 p-6 relative flex flex-col justify-between">
+                                 
+                                 <div>
+                                     <div className="flex justify-between items-start mb-2">
+                                         <h2 className="text-2xl font-black text-white leading-none tracking-tight">{selectedItem.title}</h2>
+                                         <Fingerprint className="w-6 h-6 text-slate-700" />
+                                     </div>
+                                     <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{selectedItem.description}</p>
+                                 </div>
+                                 
+                                 <div className="pt-4">
+                                     <button 
+                                        onClick={runScan}
+                                        disabled={scanState === 'scanning'}
+                                        className={`w-full py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg flex items-center justify-center gap-3 transition-all ${
+                                            scanState === 'scanning' 
+                                            ? 'bg-slate-800 text-slate-500 cursor-wait'
+                                            : 'bg-white text-slate-900 hover:bg-cyan-50 hover:shadow-cyan-500/20 active:scale-95'
+                                        }`}
+                                     >
+                                        {scanState === 'scanning' ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" /> Analyzing Vectors...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Search className="w-4 h-4" /> 
+                                                {scanState === 'complete' ? 'Re-Initialize Scan' : 'Run Semantic Scan'}
+                                            </>
+                                        )}
+                                     </button>
+                                 </div>
+                             </div>
+                        </div>
+                    </div>
+                 </>
+             ) : (
+                 <div className="text-center">
+                    <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-indigo-500/5">
+                        <Radar className="w-8 h-8 text-indigo-500/50" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Discovery Hub Inactive</h3>
+                    <p className="text-slate-500 text-sm">Select an active case from the sidebar to begin.</p>
+                 </div>
+             )}
+        </div>
+        
+        {/* --- RIGHT PANEL: MATCHES (Slide in) --- */}
+        {scanState === 'complete' && (
+             <div className="relative z-20 w-full md:w-80 bg-[#0a0f26]/80 backdrop-blur-xl border-t md:border-t-0 md:border-l border-white/5 p-6 animate-in slide-in-from-right-10 duration-500 flex flex-col">
+                  <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                          <h3 className="text-sm font-bold text-white tracking-wide">Analysis Results</h3>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-white border border-white/5">{matches.length} Matches</span>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+                      {matches.length === 0 ? (
+                          <div className="h-full flex flex-col items-center justify-center text-center p-4 opacity-50">
+                             <ShieldCheck className="w-12 h-12 text-slate-600 mb-3" />
+                             <p className="text-xs font-bold text-slate-400">No visual matches found.</p>
+                             <p className="text-[10px] text-slate-600 mt-1">We'll alert you if this changes.</p>
+                          </div>
+                      ) : (
+                          matches.map(({ report, confidence }) => (
+                              <div key={report.id} className="p-3 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-colors group">
+                                   <div className="flex gap-3 mb-3">
+                                      <div className="w-12 h-12 rounded-lg bg-black/50 overflow-hidden border border-white/10 shrink-0">
+                                          {report.imageUrls[0] && <img src={report.imageUrls[0]} className="w-full h-full object-cover" />}
+                                      </div>
+                                      <div className="min-w-0">
+                                          <div className="flex items-center gap-2 mb-0.5">
+                                             <span className="text-[9px] text-emerald-400 font-bold">{confidence}% Match</span>
+                                          </div>
+                                          <h4 className="text-xs font-bold text-white line-clamp-1">{report.title}</h4>
+                                          <p className="text-[10px] text-slate-500 truncate">{report.location}</p>
+                                      </div>
+                                   </div>
+                                   <button 
+                                     onClick={() => onCompare(selectedItem!, report)}
+                                     className="w-full py-2 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border border-indigo-500/20 hover:border-indigo-500"
+                                   >
+                                      Compare Artifacts
+                                   </button>
+                              </div>
+                          ))
+                      )}
+                  </div>
+             </div>
+        )}
     </div>
   );
 };
