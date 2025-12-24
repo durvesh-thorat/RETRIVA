@@ -243,14 +243,18 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                                  className="transition-all duration-1000 ease-out"
                                />
                             </svg>
-                            <div className="absolute flex flex-col items-center">
-                               {/* REMOVED PERCENTAGE TEXT */}
-                               <div className="text-center px-2">
-                                  <span className="text-lg font-black text-white leading-tight tracking-tighter block" style={{ textShadow: `0 0 20px ${strokeColor}60` }}>
+                            
+                            {/* UPDATED TEXT CONTAINER */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                               <div className="text-center px-1 flex flex-col items-center transition-all duration-500">
+                                  {/* Main Tier Label - Smaller & Cleaner */}
+                                  <span className="text-sm sm:text-base font-black text-white leading-none tracking-tight mb-0.5" style={{ textShadow: `0 0 20px ${strokeColor}40` }}>
                                      {tier.label.split(' ')[0]}
                                   </span>
+                                  
+                                  {/* Secondary Label - Technical Font */}
                                   {tier.label.split(' ')[1] && (
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em]">
                                         {tier.label.split(' ')[1]}
                                     </span>
                                   )}
