@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { ItemReport, ReportType } from '../types';
 import { compareItems, ComparisonResult, getMatchTier } from '../services/geminiService';
-import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, Loader2, Fingerprint, ShieldCheck, HelpCircle, Bot } from 'lucide-react';
+import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, Loader2, Fingerprint, ShieldCheck, HelpCircle, Bot, ArrowRight, BrainCircuit, Search, Info } from 'lucide-react';
 
 interface MatchComparatorProps {
   item1: ItemReport;
@@ -14,37 +14,40 @@ interface MatchComparatorProps {
 const SafeImage = ({ src, alt }: { src?: string, alt?: string }) => {
   const [error, setError] = useState(false);
   if (src && !error) {
-    return <img src={src} className="w-full h-full object-contain bg-slate-100 dark:bg-slate-800/50 transition-transform duration-700 hover:scale-110" onError={() => setError(true)} alt={alt} />;
+    return <img src={src} className="w-full h-full object-contain bg-black/20 transition-transform duration-700 hover:scale-105" onError={() => setError(true)} alt={alt} />;
   }
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400">
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/50 text-slate-500 border border-slate-800 border-dashed rounded-xl">
       <ScanLine className="w-8 h-8 mb-2 opacity-50" />
       <span className="font-bold text-[10px] uppercase tracking-widest">No Visuals</span>
     </div>
   );
 };
 
-const ComparisonRow = ({ label, val1, val2, icon: Icon }: { label: string, val1: string, val2: string, icon: any }) => (
-  <div className="grid grid-cols-[1fr_auto_1fr] gap-2 sm:gap-4 py-2 sm:py-3 border-b border-slate-100 dark:border-slate-800/50 last:border-0 items-center group hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors px-2 sm:px-4 rounded-xl">
-    <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 min-w-0">
-       <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-400 group-hover:text-indigo-600 transition-colors shrink-0">
-         <Icon className="w-3 h-3" />
-       </div>
-       <span className="truncate font-medium text-[11px] sm:text-xs">{val1}</span>
-    </div>
-    
-    <div className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[8px] font-extrabold text-slate-400 uppercase tracking-widest border border-slate-200 dark:border-slate-700 shadow-sm whitespace-nowrap">
-      {label}
-    </div>
+const ComparisonRow = ({ label, val1, val2, icon: Icon, matchType }: { label: string, val1: string, val2: string, icon: any, matchType?: 'match' | 'mismatch' | 'neutral' }) => {
+  const isMatch = val1 === val2;
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] gap-4 py-3 border-b border-white/5 last:border-0 items-center group">
+      <div className={`flex items-center gap-2 text-xs font-medium min-w-0 ${isMatch ? 'text-emerald-400' : 'text-slate-400'}`}>
+         <div className="p-1.5 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors shrink-0">
+           <Icon className="w-3 h-3" />
+         </div>
+         <span className="truncate">{val1}</span>
+      </div>
+      
+      <div className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[9px] font-black text-slate-500 uppercase tracking-widest shadow-sm whitespace-nowrap">
+        {label}
+      </div>
 
-    <div className="flex items-center justify-end gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 dark:text-slate-300 min-w-0 text-right">
-       <span className="truncate font-medium text-[11px] sm:text-xs">{val2}</span>
-       <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-400 group-hover:text-indigo-600 transition-colors shrink-0">
-         <Icon className="w-3 h-3" />
-       </div>
+      <div className={`flex items-center justify-end gap-2 text-xs font-medium min-w-0 text-right ${isMatch ? 'text-emerald-400' : 'text-slate-400'}`}>
+         <span className="truncate">{val2}</span>
+         <div className="p-1.5 rounded-lg bg-white/5 group-hover:bg-white/10 transition-colors shrink-0">
+           <Icon className="w-3 h-3" />
+         </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose, onContact }) => {
   const [analysis, setAnalysis] = useState<ComparisonResult | null>(null);
@@ -59,7 +62,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
   useEffect(() => {
     if (loading) {
       const interval = setInterval(() => {
-        setLoadingStep(prev => (prev + 1) % 3);
+        setLoadingStep(prev => (prev + 1) % 4);
       }, 800);
       return () => clearInterval(interval);
     }
@@ -85,175 +88,241 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
     runAnalysis();
   }, [item1, item2]);
 
-  const tier = getMatchTier(analysis?.confidence || 0);
+  const score = analysis?.confidence || 0;
   
-  // Icon Mapping
-  const IconComponent = tier.iconName === 'ShieldCheck' ? ShieldCheck : 
-                       tier.iconName === 'Check' ? Check :
-                       tier.iconName === 'HelpCircle' ? HelpCircle : X;
+  // Google Colors Helper
+  const getScoreColor = (s: number) => {
+      if (s >= 90) return '#34A853'; // Green
+      if (s >= 70) return '#4285F4'; // Blue
+      if (s >= 50) return '#FBBC05'; // Yellow
+      return '#EA4335'; // Red
+  };
+
+  const strokeColor = getScoreColor(score);
+  const circumference = 2 * Math.PI * 52; // Radius 52
+  const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-8 md:p-12 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
-       <div className="w-full max-w-4xl h-[100dvh] sm:h-[80vh] md:h-[650px] relative rounded-none sm:rounded-[2rem] p-[1px] bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-[#050505]/90 backdrop-blur-xl animate-fade-in font-sans">
+       
+       {/* MAIN CONTAINER */}
+       <div className="relative w-full max-w-6xl h-[90vh] sm:h-[800px] flex rounded-[2.5rem] bg-[#0F0F0F] shadow-2xl overflow-hidden border border-white/10">
           
-          <div className="w-full h-full bg-white dark:bg-slate-950 rounded-none sm:rounded-[31px] overflow-hidden flex flex-col relative">
-             
-             {/* Sticky Header */}
-             <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl z-20 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white animate-pulse-slow">
-                    <Fingerprint className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm sm:text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 leading-none mb-0.5">
-                      Gemini Match
-                    </h2>
-                    <p className="text-[10px] text-slate-500 font-medium">Deep comparison & verification</p>
-                  </div>
+          {/* GOOGLE GLOW BACKGROUND */}
+          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#4285F4]/20 blur-[120px] rounded-full pointer-events-none mix-blend-screen"></div>
+          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-[#34A853]/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen"></div>
+          <div className="absolute top-[40%] left-[40%] w-[30%] h-[30%] bg-[#EA4335]/10 blur-[100px] rounded-full pointer-events-none mix-blend-screen"></div>
+
+          {/* Close Button */}
+          <button 
+            onClick={onClose} 
+            className="absolute top-6 right-6 z-50 p-2.5 bg-black/50 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-all backdrop-blur-md border border-white/5"
+          >
+             <X className="w-5 h-5" />
+          </button>
+
+          {loading ? (
+             <div className="w-full h-full flex flex-col items-center justify-center relative z-20">
+                <div className="relative w-24 h-24 mb-8">
+                   <div className="absolute inset-0 border-4 border-white/10 rounded-full"></div>
+                   <div className="absolute inset-0 border-t-4 border-[#4285F4] rounded-full animate-spin"></div>
+                   <div className="absolute inset-1 border-r-4 border-[#EA4335] rounded-full animate-spin-reverse opacity-70"></div>
+                   <div className="absolute inset-2 border-b-4 border-[#FBBC05] rounded-full animate-spin opacity-50"></div>
+                   
+                   <div className="absolute inset-0 flex items-center justify-center">
+                      <BrainCircuit className="w-8 h-8 text-white animate-pulse" />
+                   </div>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                  <X className="w-5 h-5 text-slate-400" />
-                </button>
+                <h2 className="text-2xl font-black text-white tracking-tight mb-2">
+                   Gemini Vision <span className="text-[#4285F4]">Processing</span>
+                </h2>
+                <div className="h-6 overflow-hidden">
+                   <p className="text-sm font-medium text-slate-400 animate-slide-up key-{loadingStep}">
+                      {loadingStep === 0 && "Analyzing semantic features..."}
+                      {loadingStep === 1 && "Comparing visual vectors..."}
+                      {loadingStep === 2 && "Validating metadata..."}
+                      {loadingStep === 3 && "Calculating match probability..."}
+                   </p>
+                </div>
              </div>
-
-             {/* Content */}
-             <div className="flex-1 overflow-y-auto lg:overflow-hidden relative bg-slate-50/50 dark:bg-slate-900/50">
+          ) : (
+             <div className="flex flex-col lg:flex-row w-full h-full relative z-10">
                 
-                {loading ? (
-                   <div className="absolute inset-0 z-30 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center">
-                      <div className="relative w-16 h-16 sm:w-20 sm:h-20 mb-6 sm:mb-8">
-                         <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
-                         <div className="absolute inset-0 rounded-full border-t-4 border-indigo-500 animate-spin"></div>
-                         <div className="absolute inset-0 flex items-center justify-center">
-                            <Sparkles className="w-6 h-6 sm:w-8 h-8 text-indigo-500 animate-pulse" />
-                         </div>
+                {/* LEFT PANEL: VISUAL & DATA COMPARISON */}
+                <div className="w-full lg:w-[65%] h-full flex flex-col border-b lg:border-b-0 lg:border-r border-white/10 bg-[#0F0F0F]/50">
+                   
+                   {/* Header */}
+                   <div className="px-8 py-6 border-b border-white/5 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4285F4] to-[#34A853] flex items-center justify-center shadow-lg shadow-[#4285F4]/20">
+                         <Sparkles className="w-5 h-5 text-white" />
                       </div>
-                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mb-2">Analyzing Match</h3>
-                      <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
-                         {loadingStep === 0 && "Comparing visual features..."}
-                         {loadingStep === 1 && "Verifying timestamps & location..."}
-                         {loadingStep === 2 && "Calculating compatibility..."}
-                      </p>
+                      <div>
+                         <h2 className="text-lg font-bold text-white leading-none mb-1">Visual Comparison</h2>
+                         <p className="text-xs font-medium text-slate-500">Side-by-side artifact analysis</p>
+                      </div>
                    </div>
-                ) : (
-                   <div className="flex flex-col lg:flex-row h-auto lg:h-full">
+
+                   {/* Scrollable Content */}
+                   <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                       
-                      {/* Left Panel: Visuals & Data & AI Verdict */}
-                      <div className="w-full lg:flex-1 lg:overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-                         
-                         {/* Images Grid */}
-                         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
-                            {[item1, item2].map((item, idx) => (
-                              <div key={idx} className="space-y-2">
-                                <div className="relative aspect-[4/3] rounded-xl overflow-hidden shadow-md ring-1 ring-slate-900/5 dark:ring-white/10 bg-slate-900">
-                                   <SafeImage src={item.imageUrls[0]} alt={item.title} />
-                                   <div className="absolute top-0 left-0 right-0 p-1.5 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
-                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur-md text-white border border-white/20 ${item.type === 'LOST' ? 'bg-orange-500/80' : 'bg-teal-500/80'}`}>
-                                        {item.type}
-                                      </span>
-                                   </div>
-                                </div>
-                                <h3 className="text-[10px] sm:text-xs font-bold text-slate-900 dark:text-white text-center px-1 line-clamp-1">{item.title}</h3>
-                              </div>
-                            ))}
-                         </div>
-
-                         {/* Details Table */}
-                         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-6">
-                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                               <ComparisonRow label="CATEGORY" icon={Tag} val1={item1.category} val2={item2.category} />
-                               <ComparisonRow label="TIME" icon={Clock} val1={`${item1.date} ${item1.time}`} val2={`${item2.date} ${item2.time}`} />
-                               <ComparisonRow label="LOCATION" icon={MapPin} val1={item1.location} val2={item2.location} />
-                            </div>
-                         </div>
-
-                         {/* AI Verdict Card (Below Details) */}
-                         <div className="relative overflow-hidden rounded-2xl border border-indigo-100 dark:border-indigo-900 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 p-5 shadow-sm group">
-                            {/* Decorative Sparkle */}
-                            <div className="absolute -top-6 -right-6 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                            
-                            <div className="relative z-10">
-                               <div className="flex items-center gap-2 mb-3">
-                                  <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400">
-                                     <Bot className="w-4 h-4" />
+                      {/* Image Comparison */}
+                      <div className="flex gap-4 md:gap-8 mb-8">
+                         {[item1, item2].map((item, idx) => (
+                            <div key={idx} className="flex-1 flex flex-col gap-3 group">
+                               <div className="relative aspect-square rounded-2xl overflow-hidden bg-slate-900 border border-white/10 shadow-2xl">
+                                  <SafeImage src={item.imageUrls[0]} alt={item.title} />
+                                  
+                                  {/* Badge */}
+                                  <div className={`absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md border border-white/10 text-white shadow-lg ${item.type === 'LOST' ? 'bg-[#EA4335]/80' : 'bg-[#34A853]/80'}`}>
+                                     {item.type}
                                   </div>
-                                  <h3 className="text-xs font-black text-indigo-900 dark:text-indigo-100 uppercase tracking-widest">
-                                     Gemini Analysis
-                                  </h3>
                                </div>
-                               <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                                  {analysis?.explanation}
-                               </p>
+                               <div className="px-1">
+                                  <h3 className="text-sm font-bold text-white line-clamp-1">{item.title}</h3>
+                                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{item.description}</p>
+                               </div>
                             </div>
+                         ))}
+                         
+                         {/* VS Badge in Center */}
+                         <div className="hidden md:flex absolute left-1/2 top-[160px] -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/20 items-center justify-center z-20 shadow-xl">
+                            <span className="text-[10px] font-black text-slate-400">VS</span>
                          </div>
-
                       </div>
 
-                      {/* Right Panel: Confidence Tier & Lists */}
-                      <div className="w-full lg:w-[320px] bg-white dark:bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 flex flex-col lg:h-full z-10">
-                         
-                         <div className="flex-1 lg:overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-                            
-                            {/* Tier Badge at Top */}
-                            <div className={`mb-6 p-6 rounded-2xl border ${tier.bg} ${tier.border} text-center flex flex-col items-center justify-center gap-3 transition-colors duration-500`}>
-                                <div className={`p-3 rounded-full bg-white dark:bg-slate-900 shadow-md ${tier.color}`}>
-                                    <IconComponent className="w-8 h-8" />
-                                </div>
-                                <div>
-                                    <h2 className={`text-xl font-black uppercase tracking-tight ${tier.color} leading-none mb-1`}>
-                                        {tier.label.split(' ')[0]}
-                                    </h2>
-                                    <p className={`text-[10px] font-bold uppercase tracking-widest opacity-70 ${tier.color}`}>
-                                        {tier.label.split(' ').slice(1).join(' ')}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-5">
-                               <div className="animate-slide-up delay-100">
-                                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                     <Check className="w-3 h-3 text-emerald-500" /> Key Matches
-                                  </h4>
-                                  <div className="space-y-1.5">
-                                     {analysis?.similarities && analysis.similarities.length > 0 ? (
-                                        analysis.similarities.slice(0, 3).map((sim, i) => (
-                                          <div key={i} className="px-2.5 py-1.5 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-lg border border-emerald-100 dark:border-emerald-900/20 text-[10px] sm:text-xs font-semibold text-emerald-800 dark:text-emerald-200">
-                                             {sim}
-                                          </div>
-                                        ))
-                                     ) : <p className="text-[10px] text-slate-400 italic">No specific matches.</p>}
-                                  </div>
-                               </div>
-
-                               <div className="animate-slide-up delay-200">
-                                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                     <AlertTriangle className="w-3 h-3 text-red-500" /> Differences
-                                  </h4>
-                                  <div className="space-y-1.5">
-                                     {analysis?.differences && analysis.differences.length > 0 ? (
-                                        analysis.differences.slice(0, 3).map((diff, i) => (
-                                          <div key={i} className="px-2.5 py-1.5 bg-red-50/50 dark:bg-red-900/10 rounded-lg border border-red-100 dark:border-red-900/20 text-[10px] sm:text-xs font-semibold text-red-800 dark:text-red-200">
-                                             {diff}
-                                          </div>
-                                        ))
-                                     ) : <p className="text-[10px] text-slate-400 italic">No significant differences.</p>}
-                                  </div>
-                               </div>
-                            </div>
+                      {/* Data Table */}
+                      <div className="bg-[#141414] rounded-2xl border border-white/5 overflow-hidden p-1">
+                         <div className="px-4 py-3 bg-white/5 border-b border-white/5 flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Metadata Match</span>
+                            <Info className="w-3.5 h-3.5 text-slate-600" />
                          </div>
-
-                         {/* Footer Action */}
-                         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm mt-auto lg:sticky lg:bottom-0">
-                            <button onClick={onContact} className="w-full py-3 bg-brand-violet hover:bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-95">
-                               <MessageCircle className="w-4 h-4" /> Start Conversation
-                            </button>
+                         <div className="px-4">
+                            <ComparisonRow label="CATEGORY" icon={Tag} val1={item1.category} val2={item2.category} />
+                            <ComparisonRow label="TIME" icon={Clock} val1={item1.time} val2={item2.time} />
+                            <ComparisonRow label="DATE" icon={Clock} val1={item1.date} val2={item2.date} />
+                            <ComparisonRow label="LOCATION" icon={MapPin} val1={item1.location} val2={item2.location} />
                          </div>
-
                       </div>
+
                    </div>
-                )}
+                </div>
+
+                {/* RIGHT PANEL: AI VERDICT */}
+                <div className="w-full lg:w-[35%] h-full flex flex-col bg-[#0A0A0A] relative overflow-hidden">
+                   
+                   {/* Background Gradient Mesh */}
+                   <div className="absolute top-0 right-0 w-full h-[400px] bg-gradient-to-b from-[#4285F4]/5 to-transparent pointer-events-none"></div>
+
+                   <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative z-10">
+                      
+                      {/* Score Circle */}
+                      <div className="flex flex-col items-center justify-center mb-10 mt-4">
+                         <div className="relative w-40 h-40 flex items-center justify-center">
+                            {/* SVG Circle */}
+                            <svg className="w-full h-full transform -rotate-90 drop-shadow-2xl">
+                               <circle
+                                 cx="80"
+                                 cy="80"
+                                 r="52"
+                                 stroke="currentColor"
+                                 strokeWidth="8"
+                                 fill="transparent"
+                                 className="text-white/5"
+                               />
+                               <circle
+                                 cx="80"
+                                 cy="80"
+                                 r="52"
+                                 stroke={strokeColor}
+                                 strokeWidth="8"
+                                 fill="transparent"
+                                 strokeDasharray={circumference}
+                                 strokeDashoffset={strokeDashoffset}
+                                 strokeLinecap="round"
+                                 className="transition-all duration-1000 ease-out"
+                               />
+                            </svg>
+                            <div className="absolute flex flex-col items-center">
+                               <span className="text-4xl font-black text-white tracking-tighter" style={{ textShadow: `0 0 20px ${strokeColor}60` }}>
+                                  {score}%
+                               </span>
+                               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-1">Match</span>
+                            </div>
+                         </div>
+                         
+                         <div className="text-center mt-2">
+                             <h3 className="text-lg font-bold text-white mb-1" style={{ color: strokeColor }}>
+                                {score >= 80 ? 'High Probability' : score >= 50 ? 'Potential Match' : 'Unlikely Match'}
+                             </h3>
+                             <p className="text-xs text-slate-500 max-w-[200px] mx-auto leading-relaxed">
+                                Based on visual vectors and semantic analysis.
+                             </p>
+                         </div>
+                      </div>
+
+                      {/* AI Explanation Card */}
+                      <div className="mb-8 p-5 rounded-2xl bg-white/5 border border-white/10 relative overflow-hidden group hover:bg-white/10 transition-colors">
+                          <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#4285F4] via-[#EA4335] to-[#FBBC05]"></div>
+                          
+                          <div className="flex items-center gap-2 mb-3">
+                             <Bot className="w-4 h-4 text-[#4285F4]" />
+                             <span className="text-xs font-bold text-white uppercase tracking-widest">Gemini Analysis</span>
+                          </div>
+                          <p className="text-sm text-slate-300 leading-relaxed font-medium">
+                             {analysis?.explanation}
+                          </p>
+                      </div>
+
+                      {/* Key Features List */}
+                      <div className="space-y-6">
+                         <div>
+                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                               <Check className="w-3 h-3 text-[#34A853]" /> Matching Features
+                            </h4>
+                            <div className="space-y-2">
+                               {analysis?.similarities.slice(0, 3).map((sim, i) => (
+                                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-[#34A853]/5 border border-[#34A853]/10">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-[#34A853] mt-1.5 shrink-0"></div>
+                                     <span className="text-xs text-[#34A853] font-medium leading-snug">{sim}</span>
+                                  </div>
+                               ))}
+                            </div>
+                         </div>
+
+                         {analysis?.differences && analysis.differences.length > 0 && (
+                            <div>
+                               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                  <AlertTriangle className="w-3 h-3 text-[#EA4335]" /> Discrepancies
+                               </h4>
+                               <div className="space-y-2">
+                                  {analysis.differences.slice(0, 2).map((diff, i) => (
+                                     <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-[#EA4335]/5 border border-[#EA4335]/10">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[#EA4335] mt-1.5 shrink-0"></div>
+                                        <span className="text-xs text-[#EA4335] font-medium leading-snug">{diff}</span>
+                                     </div>
+                                  ))}
+                               </div>
+                            </div>
+                         )}
+                      </div>
+
+                   </div>
+
+                   {/* Footer Action */}
+                   <div className="p-6 border-t border-white/5 bg-[#0A0A0A] relative z-20">
+                      <button 
+                        onClick={onContact}
+                        className="w-full py-4 rounded-xl font-bold text-sm text-white shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 relative overflow-hidden group"
+                      >
+                         <div className="absolute inset-0 bg-gradient-to-r from-[#4285F4] to-[#34A853] opacity-90 group-hover:opacity-100 transition-opacity"></div>
+                         <span className="relative z-10 flex items-center gap-2">
+                            <MessageCircle className="w-4 h-4" /> Start Conversation
+                         </span>
+                      </button>
+                   </div>
+                </div>
              </div>
-          </div>
+          )}
        </div>
     </div>
   );
