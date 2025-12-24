@@ -215,9 +215,17 @@ export const findSmartMatches = async (sourceItem: ItemReport, allReports: ItemR
 
         if (text) {
             const cleanText = cleanJSON(text);
-            const data = JSON.parse(cleanText);
-            matchResults = data.matches || [];
-            usedAI = true;
+            try {
+                const data = JSON.parse(cleanText);
+                matchResults = data.matches || [];
+                usedAI = true;
+            } catch (jsonErr) {
+                 // Try aggressive cleanup for control characters
+                 const sanitized = cleanText.replace(/[\x00-\x1F]/g, " ");
+                 const data = JSON.parse(sanitized);
+                 matchResults = data.matches || [];
+                 usedAI = true;
+            }
         }
     } catch (e) {
         console.error("[Gemini] Smart Match Logic Error:", e);
@@ -503,7 +511,23 @@ export const compareItems = async (item1: ItemReport, item2: ItemReport): Promis
 
         if (!text) throw new Error("No response");
         
-        const result = JSON.parse(cleanJSON(text));
+        const cleanedText = cleanJSON(text);
+        let result;
+        
+        try {
+            result = JSON.parse(cleanedText);
+        } catch (parseError: any) {
+            // FIX for "Bad control character in string literal" error
+            // Often occurs when AI puts literal newlines in the explanation string
+            if (parseError.message.includes("Bad control character") || parseError.message.includes("JSON")) {
+                // Aggressive fix: remove all control characters (newlines, tabs) to make it valid single-line JSON
+                // We assume the AI output newlines were mostly for formatting, not content critical structure.
+                const sanitized = cleanedText.replace(/[\x00-\x1F]/g, " ");
+                result = JSON.parse(sanitized);
+            } else {
+                throw parseError;
+            }
+        }
         
         // --- SCORE NORMALIZATION LOGIC ---
         let conf = result.confidence;

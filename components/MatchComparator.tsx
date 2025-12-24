@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
-import { ItemReport, ReportType } from '../types';
-import { compareItems, ComparisonResult, getMatchTier } from '../services/geminiService';
-import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, Loader2, Fingerprint, ShieldCheck, HelpCircle, Bot, ArrowRight, BrainCircuit, Search, Info } from 'lucide-react';
+import { ItemReport } from '../types';
+import { compareItems, ComparisonResult } from '../services/geminiService';
+import { X, Sparkles, MessageCircle, Check, AlertTriangle, MapPin, Clock, Tag, ScanLine, BrainCircuit, Info, Bot } from 'lucide-react';
 
 interface MatchComparatorProps {
   item1: ItemReport;
@@ -24,7 +24,7 @@ const SafeImage = ({ src, alt }: { src?: string, alt?: string }) => {
   );
 };
 
-const ComparisonRow = ({ label, val1, val2, icon: Icon, matchType }: { label: string, val1: string, val2: string, icon: any, matchType?: 'match' | 'mismatch' | 'neutral' }) => {
+const ComparisonRow = ({ label, val1, val2, icon: Icon }: { label: string, val1: string, val2: string, icon: any }) => {
   const isMatch = val1 === val2;
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] gap-4 py-3 border-b border-white/5 last:border-0 items-center group">
@@ -106,12 +106,13 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-[#050505]/90 backdrop-blur-xl animate-fade-in font-sans">
        
        {/* MAIN CONTAINER */}
-       <div className="relative w-full max-w-6xl h-[90vh] sm:h-[800px] flex rounded-[2.5rem] bg-[#0F0F0F] shadow-2xl overflow-hidden border border-white/10">
+       <div className="relative w-full max-w-6xl h-[90vh] sm:h-[800px] flex flex-col md:flex-row rounded-[2.5rem] bg-[#0F0F0F] shadow-2xl overflow-hidden border border-white/10">
           
           {/* GOOGLE GLOW BACKGROUND */}
           <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#4285F4]/20 blur-[120px] rounded-full pointer-events-none mix-blend-screen"></div>
           <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-[#34A853]/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen"></div>
           <div className="absolute top-[40%] left-[40%] w-[30%] h-[30%] bg-[#EA4335]/10 blur-[100px] rounded-full pointer-events-none mix-blend-screen"></div>
+          <div className="absolute bottom-[20%] left-[20%] w-[20%] h-[20%] bg-[#FBBC05]/10 blur-[80px] rounded-full pointer-events-none mix-blend-screen"></div>
 
           {/* Close Button */}
           <button 
@@ -146,10 +147,9 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                 </div>
              </div>
           ) : (
-             <div className="flex flex-col lg:flex-row w-full h-full relative z-10">
-                
+             <>
                 {/* LEFT PANEL: VISUAL & DATA COMPARISON */}
-                <div className="w-full lg:w-[65%] h-full flex flex-col border-b lg:border-b-0 lg:border-r border-white/10 bg-[#0F0F0F]/50">
+                <div className="w-full md:w-[65%] h-full flex flex-col border-b md:border-b-0 md:border-r border-white/10 bg-[#0F0F0F]/50 relative z-10">
                    
                    {/* Header */}
                    <div className="px-8 py-6 border-b border-white/5 flex items-center gap-3">
@@ -166,7 +166,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                       
                       {/* Image Comparison */}
-                      <div className="flex gap-4 md:gap-8 mb-8">
+                      <div className="flex gap-4 md:gap-8 mb-8 relative">
                          {[item1, item2].map((item, idx) => (
                             <div key={idx} className="flex-1 flex flex-col gap-3 group">
                                <div className="relative aspect-square rounded-2xl overflow-hidden bg-slate-900 border border-white/10 shadow-2xl">
@@ -185,7 +185,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                          ))}
                          
                          {/* VS Badge in Center */}
-                         <div className="hidden md:flex absolute left-1/2 top-[160px] -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/20 items-center justify-center z-20 shadow-xl">
+                         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#1A1A1A] border border-white/20 flex items-center justify-center z-20 shadow-xl">
                             <span className="text-[10px] font-black text-slate-400">VS</span>
                          </div>
                       </div>
@@ -208,7 +208,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                 </div>
 
                 {/* RIGHT PANEL: AI VERDICT */}
-                <div className="w-full lg:w-[35%] h-full flex flex-col bg-[#0A0A0A] relative overflow-hidden">
+                <div className="w-full md:w-[35%] h-full flex flex-col bg-[#0A0A0A] relative overflow-hidden z-10">
                    
                    {/* Background Gradient Mesh */}
                    <div className="absolute top-0 right-0 w-full h-[400px] bg-gradient-to-b from-[#4285F4]/5 to-transparent pointer-events-none"></div>
@@ -321,7 +321,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                       </button>
                    </div>
                 </div>
-             </div>
+             </>
           )}
        </div>
     </div>
