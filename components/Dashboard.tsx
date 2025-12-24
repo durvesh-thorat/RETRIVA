@@ -123,8 +123,10 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
 
   if (myOpenLostReports.length === 0) return null; 
 
+  const showFloatingCards = selectedItem && scanState !== 'complete';
+
   return (
-    <div className="relative w-full h-[650px] bg-[#020617] rounded-[2.5rem] overflow-hidden border border-slate-800 shadow-2xl mb-12 flex flex-col md:flex-row font-sans">
+    <div className="relative w-full min-h-[550px] md:h-[600px] bg-[#020617] rounded-[2.5rem] overflow-hidden border border-slate-800 shadow-2xl mb-12 flex flex-col md:flex-row font-sans">
         
         {/* Background - Deep Navy/Black Spatial Field (No Grid) */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#020617] via-[#050b1f] to-[#000000] z-0"></div>
@@ -134,7 +136,7 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
         <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
         {/* --- LEFT PANEL: ACTIVE CASES (Floating Strip) --- */}
-        <div className="relative z-20 w-full md:w-72 p-6 flex flex-col gap-4 bg-[#0a0f26]/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-white/5 h-full">
+        <div className="relative z-20 w-full md:w-72 p-6 flex flex-col gap-4 bg-[#0a0f26]/60 backdrop-blur-xl border-b md:border-b-0 md:border-r border-white/5 h-64 md:h-full shrink-0">
              <div className="flex items-center gap-3 mb-2">
                  <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.5)]">
                     <Target className="w-4 h-4 text-white" />
@@ -175,59 +177,61 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
         </div>
 
         {/* --- CENTER STAGE: SPATIAL CANVAS --- */}
-        <div className="flex-1 relative flex items-center justify-center perspective-1000 overflow-hidden p-8">
+        <div className="flex-1 relative flex items-center justify-center perspective-1000 overflow-hidden p-8 min-h-[300px]">
              
              {selectedItem ? (
                  <>
-                    {/* Floating Attribute Card: CATEGORY (Top Left) */}
-                    <div className="absolute top-16 left-16 md:top-20 md:left-24 animate-pulse-soft hidden md:block">
-                        <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg relative group hover:bg-white/5 transition-colors">
-                            <div className="absolute -bottom-6 left-1/2 w-px h-6 bg-gradient-to-b from-cyan-500/50 to-transparent"></div>
-                            <p className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
-                               <Layers className="w-3 h-3" /> Category
-                            </p>
-                            <p className="text-sm font-bold text-white group-hover:text-cyan-200 transition-colors">{selectedItem.category}</p>
-                        </div>
-                    </div>
+                    {/* Floating Attribute Cards - Only show when NOT viewing results to prevent overlap */}
+                    {showFloatingCards && (
+                        <>
+                            <div className="absolute top-16 left-16 md:top-20 md:left-24 animate-pulse-soft hidden lg:block">
+                                <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg relative group hover:bg-white/5 transition-colors">
+                                    <div className="absolute -bottom-6 left-1/2 w-px h-6 bg-gradient-to-b from-cyan-500/50 to-transparent"></div>
+                                    <p className="text-[9px] text-cyan-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                                    <Layers className="w-3 h-3" /> Category
+                                    </p>
+                                    <p className="text-sm font-bold text-white group-hover:text-cyan-200 transition-colors">{selectedItem.category}</p>
+                                </div>
+                            </div>
 
-                    {/* Floating Attribute Card: DATE (Bottom Right) */}
-                    <div className="absolute bottom-20 right-16 md:bottom-32 md:right-24 animate-pulse-soft hidden md:block" style={{ animationDelay: '1s' }}>
-                         <div className="absolute -top-6 left-1/2 w-px h-6 bg-gradient-to-t from-purple-500/50 to-transparent"></div>
-                         <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
-                            <p className="text-[9px] text-purple-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
-                               <Clock className="w-3 h-3" /> Date Lost
-                            </p>
-                            <p className="text-sm font-bold text-white group-hover:text-purple-200 transition-colors">{selectedItem.date}</p>
-                         </div>
-                    </div>
+                            <div className="absolute bottom-20 right-16 md:bottom-32 md:right-24 animate-pulse-soft hidden lg:block" style={{ animationDelay: '1s' }}>
+                                <div className="absolute -top-6 left-1/2 w-px h-6 bg-gradient-to-t from-purple-500/50 to-transparent"></div>
+                                <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
+                                    <p className="text-[9px] text-purple-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                                    <Clock className="w-3 h-3" /> Date Lost
+                                    </p>
+                                    <p className="text-sm font-bold text-white group-hover:text-purple-200 transition-colors">{selectedItem.date}</p>
+                                </div>
+                            </div>
 
-                     {/* Floating Attribute Card: STATUS (Top Right) */}
-                    <div className="absolute top-24 right-16 md:top-32 md:right-20 animate-pulse-soft hidden md:block" style={{ animationDelay: '0.5s' }}>
-                        <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
-                             <div className="absolute -bottom-8 left-1/2 w-px h-8 bg-gradient-to-b from-emerald-500/50 to-transparent"></div>
-                             <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
-                               <Activity className="w-3 h-3" /> System Status
-                             </p>
-                             <div className="flex items-center gap-2 justify-center">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                <p className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors">
-                                   {scanState === 'scanning' ? 'Scanning...' : 'Ready'}
-                                </p>
-                             </div>
-                        </div>
-                    </div>
+                            <div className="absolute top-24 right-16 md:top-32 md:right-20 animate-pulse-soft hidden lg:block" style={{ animationDelay: '0.5s' }}>
+                                <div className="px-5 py-3 bg-[#0f172a]/40 backdrop-blur-md border border-white/10 rounded-2xl text-center shadow-lg group hover:bg-white/5 transition-colors">
+                                    <div className="absolute -bottom-8 left-1/2 w-px h-8 bg-gradient-to-b from-emerald-500/50 to-transparent"></div>
+                                    <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest mb-1 flex items-center justify-center gap-1.5">
+                                    <Activity className="w-3 h-3" /> System Status
+                                    </p>
+                                    <div className="flex items-center gap-2 justify-center">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                        <p className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors">
+                                        {scanState === 'scanning' ? 'Scanning...' : 'Ready'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
 
                     {/* CENTRAL HIGH-TECH CARD */}
-                    <div className="relative group z-10 w-full max-w-sm md:w-[340px]">
+                    <div className="relative group z-10 w-full max-w-sm md:w-[320px] transition-all duration-500">
                         
                         {/* Neon Glow Container */}
                         <div className={`absolute -inset-[2px] bg-gradient-to-b from-cyan-400 to-blue-600 rounded-[2.2rem] opacity-30 group-hover:opacity-100 blur-lg transition duration-1000 ${scanState === 'scanning' ? 'opacity-100 animate-pulse' : ''}`}></div>
                         
                         {/* Main Card Body */}
-                        <div className="relative w-full h-[450px] bg-[#0c1226] rounded-[2rem] border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+                        <div className="relative w-full h-[420px] bg-[#0c1226] rounded-[2rem] border border-white/10 overflow-hidden flex flex-col shadow-2xl">
                              
                              {/* Image Area */}
-                             <div className="h-72 bg-black relative overflow-hidden group-hover:h-72 transition-all">
+                             <div className="h-64 bg-black relative overflow-hidden group-hover:h-64 transition-all">
                                  {selectedItem.imageUrls[0] ? (
                                     <img src={selectedItem.imageUrls[0]} className="w-full h-full object-cover opacity-90 group-hover:scale-105 group-hover:opacity-100 transition-all duration-700" />
                                  ) : (
@@ -252,17 +256,17 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
                                  
                                  <div>
                                      <div className="flex justify-between items-start mb-2">
-                                         <h2 className="text-2xl font-black text-white leading-none tracking-tight">{selectedItem.title}</h2>
-                                         <Fingerprint className="w-6 h-6 text-slate-700" />
+                                         <h2 className="text-xl font-black text-white leading-none tracking-tight line-clamp-1">{selectedItem.title}</h2>
+                                         <Fingerprint className="w-5 h-5 text-slate-700" />
                                      </div>
                                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{selectedItem.description}</p>
                                  </div>
                                  
-                                 <div className="pt-4">
+                                 <div className="pt-2">
                                      <button 
                                         onClick={runScan}
                                         disabled={scanState === 'scanning'}
-                                        className={`w-full py-4 rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg flex items-center justify-center gap-3 transition-all ${
+                                        className={`w-full py-3.5 rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-lg flex items-center justify-center gap-2 transition-all ${
                                             scanState === 'scanning' 
                                             ? 'bg-slate-800 text-slate-500 cursor-wait'
                                             : 'bg-white text-slate-900 hover:bg-cyan-50 hover:shadow-cyan-500/20 active:scale-95'
@@ -270,11 +274,11 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
                                      >
                                         {scanState === 'scanning' ? (
                                             <>
-                                                <Loader2 className="w-4 h-4 animate-spin" /> Analyzing Vectors...
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing Vectors...
                                             </>
                                         ) : (
                                             <>
-                                                <Search className="w-4 h-4" /> 
+                                                <Search className="w-3.5 h-3.5" /> 
                                                 {scanState === 'complete' ? 'Re-Initialize Scan' : 'Run Semantic Scan'}
                                             </>
                                         )}
@@ -297,7 +301,7 @@ const AIDiscoveryHub = ({ user, reports, onCompare }: { user: User, reports: Ite
         
         {/* --- RIGHT PANEL: MATCHES (Slide in) --- */}
         {scanState === 'complete' && (
-             <div className="relative z-20 w-full md:w-80 bg-[#0a0f26]/80 backdrop-blur-xl border-t md:border-t-0 md:border-l border-white/5 p-6 animate-in slide-in-from-right-10 duration-500 flex flex-col">
+             <div className="relative z-20 w-full md:w-80 bg-[#0a0f26]/80 backdrop-blur-xl border-t md:border-t-0 md:border-l border-white/5 p-6 animate-in slide-in-from-right-10 slide-in-from-bottom-10 md:slide-in-from-bottom-0 duration-500 flex flex-col shrink-0 h-64 md:h-full">
                   <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 text-emerald-500" />
