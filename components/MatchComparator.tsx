@@ -12,14 +12,15 @@ interface MatchComparatorProps {
 }
 
 const LOADING_STEPS = [
-  "Initializing Gemini Vision 3.0 context...",
-  "Vectorizing visual artifacts (1024-dim)...",
-  "Isolating item subject from background noise...",
-  "Extracting semantic features (Brand, Wear, Specs)...",
-  "Comparing optical character recognition (OCR) data...",
-  "Calculating cosine similarity of embeddings...",
-  "Cross-referencing spatio-temporal metadata...",
-  "Finalizing match confidence score..."
+  "Initializing secure handshake with Gemini 3.0...",
+  "Vectorizing visual artifacts (4096-dim)...",
+  "Segmenting object foreground from noise...",
+  "Analyzing micro-features (scratches, wear)...",
+  "Extracting semantic text markers (OCR)...",
+  "Computing cosine similarity in latent space...",
+  "Cross-referencing spatio-temporal data...",
+  "Validating category taxonomy alignment...",
+  "Synthesizing match confidence probability..."
 ];
 
 const SafeImage = ({ src, alt }: { src?: string, alt?: string }) => {
@@ -74,7 +75,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
     if (loading) {
       const interval = setInterval(() => {
         setLoadingStep(prev => (prev + 1) % LOADING_STEPS.length);
-      }, 800);
+      }, 600);
       return () => clearInterval(interval);
     }
   }, [loading]);
@@ -151,7 +152,7 @@ const MatchComparator: React.FC<MatchComparatorProps> = ({ item1, item2, onClose
                 </h2>
                 <div className="h-6 overflow-hidden flex justify-center items-center gap-2">
                    <span className="text-xs font-mono text-[#4285F4]">{`[${loadingStep + 1}/${LOADING_STEPS.length}]`}</span>
-                   <p className="text-sm font-medium text-slate-400 animate-slide-up">
+                   <p className="text-sm font-medium text-slate-400 animate-slide-up key={loadingStep}">
                       {LOADING_STEPS[loadingStep]}
                    </p>
                 </div>
