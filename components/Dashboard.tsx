@@ -417,7 +417,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  {/* Badge */}
                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-indigo-300 backdrop-blur-md mx-auto lg:mx-0">
                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                     <span>AI Verified</span>
+                     <span>Cognal Intelligence</span>
                  </div>
                  
                  {/* Title */}
