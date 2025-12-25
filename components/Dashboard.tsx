@@ -472,9 +472,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, reports, onNavigate, onReso
                  <div className="pt-2 flex justify-center lg:justify-start animate-in slide-in-from-bottom-4 fade-in duration-700 delay-150">
                     <button 
                         onClick={() => onNavigate('FEATURES')}
-                        className="group relative flex items-center gap-3 px-5 py-3 bg-[#0f172a]/50 hover:bg-[#0f172a] border border-white/10 hover:border-white/20 rounded-2xl transition-all duration-300 backdrop-blur-md"
+                        className="group relative flex items-center gap-3 px-5 py-3 bg-[#0f172a]/50 hover:bg-[#0f172a] border border-white/10 hover:border-white/20 rounded-2xl transition-all duration-300 backdrop-blur-md overflow-hidden"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-r from-[#4285F4]/20 via-[#EA4335]/20 to-[#FBBC05]/20 opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"></div>
+                        {/* RESTORED GOOGLE GRADIENT: Blue, Red, Yellow, Green */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#4285F4] via-[#EA4335] via-[#FBBC05] to-[#34A853] opacity-0 group-hover:opacity-30 blur-xl transition-all duration-500"></div>
+                        
                         <div className="relative flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-white/20 group-hover:bg-white/10 transition-colors shadow-inner">
                               <Cpu className="w-5 h-5 text-[#4285F4] group-hover:scale-110 transition-transform" />
