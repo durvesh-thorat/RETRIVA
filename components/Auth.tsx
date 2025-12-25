@@ -164,32 +164,33 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
   };
 
   return (
-    <div className="h-screen w-full flex items-center justify-center p-4 lg:p-8 font-sans relative overflow-hidden bg-black">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 lg:p-8 font-sans relative bg-black overflow-y-auto overflow-x-hidden">
       
       {/* RICH CHANGING DARK GRADIENT BACKGROUND (Outer) */}
       <div 
-        className="absolute inset-0 animate-gradient-slow opacity-80"
+        className="fixed inset-0 animate-gradient-slow opacity-80"
         style={{
           background: 'linear-gradient(135deg, #000000 0%, #020617 25%, #0f172a 50%, #1e1b4b 75%, #000000 100%)',
           backgroundSize: '400% 400%',
+          zIndex: 0
         }}
       ></div>
       
       {/* Subtle Texture */}
-      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none mix-blend-overlay"></div>
+      <div className="fixed inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none mix-blend-overlay z-0"></div>
 
       {/* Decorative Orbs - Darker */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
          <div className="absolute top-[-10%] left-[-10%] w-[60vw] h-[60vw] bg-indigo-950/10 rounded-full blur-[150px] animate-pulse-soft"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-blue-950/10 rounded-full blur-[150px] animate-pulse-soft" style={{ animationDelay: '2s' }}></div>
       </div>
 
       {/* FLOATING CARD CONTAINER */}
-      {/* Increased max-width and internal spacing */}
-      <div className="relative z-10 w-full max-w-6xl flex flex-col lg:flex-row bg-[#080808] rounded-[2.5rem] shadow-2xl border border-white/5 overflow-hidden ring-1 ring-white/5 max-h-[95vh]">
+      {/* MOBILE FIX: Removed overflow-hidden from parent on mobile, added min-h-0 and h-auto to allow growth */}
+      <div className="relative z-10 w-full max-w-6xl flex flex-col lg:flex-row bg-[#080808] rounded-[2.5rem] shadow-2xl border border-white/5 ring-1 ring-white/5 lg:max-h-[95vh] h-auto lg:overflow-hidden">
         
         {/* LEFT PANEL - HERO SECTION */}
-        <div className="lg:w-5/12 relative p-8 lg:p-12 flex flex-col bg-[#0f172a] overflow-hidden shrink-0 text-white border-b lg:border-b-0 lg:border-r border-white/5">
+        <div className="lg:w-5/12 relative p-8 lg:p-12 flex flex-col bg-[#0f172a] shrink-0 text-white border-b lg:border-b-0 lg:border-r border-white/5 overflow-hidden rounded-t-[2.5rem] lg:rounded-tr-none lg:rounded-l-[2.5rem]">
            
            {/* Base Gradient */}
            <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-[#0f172a] to-black z-0"></div>
@@ -238,7 +239,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
                   </div>
 
                   {/* Features List */}
-                  <div className="space-y-6 w-full max-w-sm lg:max-w-none mx-auto lg:mx-0 mt-2">
+                  <div className="space-y-6 w-full max-w-sm lg:max-w-none mx-auto lg:mx-0 mt-2 hidden sm:block">
                     <div className="flex gap-5 group">
                         <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-indigo-500/10 group-hover:border-indigo-500/20 transition-all duration-300 shadow-lg">
                           <BrainCircuit className="w-6 h-6 text-indigo-400" />
@@ -293,7 +294,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onShowLegal, onShowFeatures }) => 
         </div>
 
         {/* RIGHT PANEL - Form */}
-        <div className="lg:w-7/12 w-full flex flex-col p-8 lg:p-12 relative bg-[#0c0e14] overflow-y-auto custom-scrollbar">
+        {/* MOBILE FIX: Enable window scrolling by removing strict overflow constraints on mobile */}
+        <div className="lg:w-7/12 w-full flex flex-col p-8 lg:p-12 relative bg-[#0c0e14] lg:overflow-y-auto custom-scrollbar rounded-b-[2.5rem] lg:rounded-bl-none lg:rounded-r-[2.5rem]">
            
            <div className="flex justify-between items-center mb-8 shrink-0">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/5">
