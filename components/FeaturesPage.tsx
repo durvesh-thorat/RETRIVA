@@ -58,7 +58,7 @@ const VisionDemo = () => {
        {/* Image Side */}
        <div className="w-1/2 relative bg-slate-800 overflow-hidden">
           <img 
-            src="https://images.unsplash.com/photo-1517260739337-6799d239ce83?q=80&w=800&auto=format&fit=crop" 
+            src="https://res.cloudinary.com/dcvdiiwwm/image/upload/v1766647305/w20-cascade-straighton_chseps.webp" 
             className="w-full h-full object-cover opacity-80" 
             alt="Blue Bottle"
           />
