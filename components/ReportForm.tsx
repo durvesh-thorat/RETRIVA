@@ -469,7 +469,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ type: initialType, user, initia
                     </div>
                     
                     <div>
-                       <label className="text-[11px] font-bold text-slate-500 uppercase ml-1 mb-1.5 block">Item Title</label>
+                       <label className="text-[11px] font-bold text-slate-500 uppercase ml-1 mb-1.5 block">Title</label>
                        <input 
                          type="text" 
                          value={title} 
