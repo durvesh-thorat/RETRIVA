@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -28,7 +27,7 @@ const App: React.FC = () => {
   // Persistent Dark Mode
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('retriva_theme');
-    return saved ? JSON.parse(saved) : false; // Default to light mode or use system pref if desired
+    return saved ? JSON.parse(saved) : true; // Default to dark mode
   });
   
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
