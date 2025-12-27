@@ -99,13 +99,13 @@ const App: React.FC = () => {
              // BACKFILL: Ensure existing users have a unique Student ID
              if (!userData.studentId) {
                  const uniqueId = await generateUniqueStudentId();
-                 await userDocRef.update({ studentId: uniqueId });
+                 await userDocRef.update({ studentId: uniqueId }).catch(e => console.warn("Backfill failed", e));
                  userData.studentId = uniqueId;
              }
 
              setUser(userData);
-             // Set Online
-             userDocRef.update({ isOnline: true, lastSeen: Date.now() });
+             // Set Online safely
+             userDocRef.set({ isOnline: true, lastSeen: Date.now() }, { merge: true }).catch(e => console.warn("Presence update failed", e));
           } else {
              // Basic fallback creation
              const uniqueId = await generateUniqueStudentId();
@@ -169,13 +169,19 @@ const App: React.FC = () => {
 
   // Presence Heartbeat - Increased frequency to avoid "offline" status
   useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-        db.collection('users').doc(user.id).update({ lastSeen: Date.now(), isOnline: true }).catch(() => {});
-    }, 30000); // Every 30 seconds
+    if (!user || !user.id) return;
+    
+    // Use .set with merge: true to avoid "No document to update" error if doc was deleted
+    const heartbeat = () => {
+        db.collection('users').doc(user.id)
+          .set({ lastSeen: Date.now(), isOnline: true }, { merge: true })
+          .catch(() => {});
+    };
+
+    const interval = setInterval(heartbeat, 30000); // Every 30 seconds
 
     const handleDisconnect = () => {
-        if (user) {
+        if (user && user.id) {
             // Best effort attempt to set offline
             navigator.sendBeacon('/api/offline', JSON.stringify({ uid: user.id }));
         }
@@ -210,7 +216,7 @@ const App: React.FC = () => {
 
   // 3. REALTIME CHATS LISTENER (Global + Private)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.id) return; // CRITICAL FIX: Ensure user ID exists before querying
 
     // A. Ensure Global Chat Exists
     const globalChatRef = db.collection('chats').doc('global');
@@ -241,35 +247,43 @@ const App: React.FC = () => {
     });
 
     // C. Listen to My Chats
-    const q = db.collection('chats').where('participants', 'array-contains', user.id);
-    const unsubPrivate = q.onSnapshot((snapshot) => {
-      const privateChats = snapshot.docs.map(d => d.data() as Chat);
-      setChats(prev => {
-         const global = prev.find(c => c.id === 'global');
-         const all = global ? [global, ...privateChats] : privateChats;
-         
-         // Deduplicate & Filter deleted
-         const uniqueMap = new Map();
-         all.forEach(c => {
-             // Filter out if user deleted it locally
-             if (c.deletedIds && c.deletedIds.includes(user.id)) return;
-             uniqueMap.set(c.id, c);
-         });
+    // CRITICAL FIX: The where clause throws if user.id is undefined.
+    try {
+        const q = db.collection('chats').where('participants', 'array-contains', user.id);
+        const unsubPrivate = q.onSnapshot((snapshot) => {
+          const privateChats = snapshot.docs.map(d => d.data() as Chat);
+          setChats(prev => {
+             const global = prev.find(c => c.id === 'global');
+             const all = global ? [global, ...privateChats] : privateChats;
+             
+             // Deduplicate & Filter deleted
+             const uniqueMap = new Map();
+             all.forEach(c => {
+                 // Filter out if user deleted it locally
+                 if (c.deletedIds && c.deletedIds.includes(user.id)) return;
+                 uniqueMap.set(c.id, c);
+             });
 
-         const unique = Array.from(uniqueMap.values());
-         // Sort: Global first, then newest
-         return unique.sort((a,b) => {
-             if (a.type === 'global') return -1;
-             if (b.type === 'global') return 1;
-             return b.lastMessageTime - a.lastMessageTime;
-         });
-      });
-    });
+             const unique = Array.from(uniqueMap.values());
+             // Sort: Global first, then newest
+             return unique.sort((a,b) => {
+                 if (a.type === 'global') return -1;
+                 if (b.type === 'global') return 1;
+                 return b.lastMessageTime - a.lastMessageTime;
+             });
+          });
+        }, (error) => {
+            console.error("Chat listener error:", error);
+        });
 
-    return () => {
-      unsubGlobal();
-      unsubPrivate();
-    };
+        return () => {
+          unsubGlobal();
+          unsubPrivate();
+        };
+    } catch (e) {
+        console.error("Failed to setup chat listener", e);
+        return () => unsubGlobal();
+    }
   }, [user]);
 
   // THEME EFFECT
@@ -291,7 +305,7 @@ const App: React.FC = () => {
 
   // PROACTIVE SCAN & ALERT SYSTEM (Client-Side Simulation of Cron Job)
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.id) return;
 
     // Request Notification Permission on login/mount
     if (Notification.permission === 'default') {
@@ -372,14 +386,21 @@ const App: React.FC = () => {
     localStorage.setItem('retriva_session_start', Date.now().toString());
 
     // Don't force DASHBOARD here, Auth Listener handles view restoration
-    db.collection('users').doc(loggedInUser.id).update({ isOnline: true, lastSeen: Date.now() });
+    // Use .set with merge to prevent error if doc missing
+    db.collection('users').doc(loggedInUser.id)
+      .set({ isOnline: true, lastSeen: Date.now() }, { merge: true })
+      .catch(() => {});
+      
     setTimeout(() => addNotification('Welcome!', `Logged in as ${loggedInUser.name}`, 'system'), 1000);
   };
 
   const handleLogout = async () => {
     try {
-      if (user) {
-        await db.collection('users').doc(user.id).update({ isOnline: false, lastSeen: Date.now() });
+      if (user && user.id) {
+        // Use set/merge to avoid "No document to update" error
+        await db.collection('users').doc(user.id)
+            .set({ isOnline: false, lastSeen: Date.now() }, { merge: true })
+            .catch((err) => console.warn("Logout presence update failed", err));
       }
       await auth.signOut();
       
@@ -392,7 +413,7 @@ const App: React.FC = () => {
       setUser(null);
       setView('AUTH');
     } catch (e) {
-      console.error(e);
+      console.error("Logout error", e);
     }
   };
 
